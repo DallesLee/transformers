@@ -386,7 +386,7 @@ class BertEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.output_attentions = config.output_attentions
-        self.output_contexts = config.output_contexts
+        self.output_contexts = True
         self.output_hidden_states = config.output_hidden_states
         self.layer = nn.ModuleList([BertLayer(config) for _ in range(config.num_hidden_layers)])
 
