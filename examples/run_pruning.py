@@ -58,50 +58,15 @@ def print_2d_tensor(tensor):
             logger.info(f"layer {row + 1}:\t" + "\t".join(f"{x:d}" for x in tensor[row].cpu().data))
 
 
-def compute_heads_importance(
-    args, model, train_dataloader, eval_dataloader, compute_importance=True, head_mask=None
-):
-    """ This method shows how to compute:
-        - head importance scores according to http://arxiv.org/abs/1905.10650
-    """
-    # Prepare our tensors
-    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
-    head_importance = torch.zeros(n_layers, n_heads).to(args.device)
+def evaluate(args, model, eval_dataloader, head_mask=None):
+    if args.n_gpu > 1:
+        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
+    else:
+        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     if head_mask is None:
         head_mask = torch.ones(n_layers, n_heads).to(args.device)
-    head_mask.requires_grad_(requires_grad=True)
-    tot_tokens = 0.0
 
-    for step, inputs in enumerate(tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])):
-        for k, v in inputs.items():
-            inputs[k] = v.to(args.device)
-
-        # Do a forward pass (not with torch.no_grad() since we need gradients for importance score - see below)
-        outputs = model(**inputs, head_mask=head_mask)
-        loss, logits, all_attentions = (
-            outputs[0],
-            outputs[1],
-            outputs[-1],
-        )  # Loss and logits are the first, attention the last
-        loss.backward()  # Backpropagate to populate the gradients in the head mask
-
-        if compute_importance:
-            head_importance += head_mask.grad.abs().detach()
-
-        tot_tokens += inputs["attention_mask"].float().detach().sum().data
-
-    # Normalize
-    head_importance /= tot_tokens
-    # Layerwise importance normalization
-    if not args.dont_normalize_importance_by_layer:
-        exponent = 2
-        norm_by_layer = torch.pow(torch.pow(head_importance, exponent).sum(-1), 1 / exponent)
-        head_importance /= norm_by_layer.unsqueeze(-1) + 1e-20
-
-    if not args.dont_normalize_global_importance:
-        head_importance = (head_importance - head_importance.min()) / (head_importance.max() - head_importance.min())
-    
     # Evaluate
     preds = None
     labels = None
@@ -124,6 +89,66 @@ def compute_heads_importance(
         else:
             preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
             labels = np.append(labels, inputs["labels"].detach().cpu().numpy(), axis=0)
+    
+    preds = np.argmax(preds, axis=1) if args.output_mode == "classification" else np.squeeze(preds)
+    score = glue_compute_metrics(args.task_name, preds, labels)[args.metric_name]
+        
+    return score
+
+def compute_heads_importance(
+    args, model, train_dataloader, head_mask=None
+):
+    """ This method shows how to compute:
+        - head importance scores according to http://arxiv.org/abs/1905.10650
+    """
+    # Prepare our tensors
+    if args.n_gpu > 1:
+        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
+    else:
+        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    head_importance = torch.zeros(n_layers, n_heads).to(args.device)
+
+    if head_mask is None:
+        head_mask = torch.ones(n_layers, n_heads).to(args.device)
+    head_mask.requires_grad_(requires_grad=True)
+    tot_tokens = 0.0
+
+    for step, inputs in enumerate(tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])):
+        for k, v in inputs.items():
+            inputs[k] = v.to(args.device)
+
+        # Do a forward pass (not with torch.no_grad() since we need gradients for importance score - see below)
+        if args.dont_use_abs:
+            loss = model(**inputs, head_mask=head_mask)[0]
+            first_derivate = torch.autograd.grad(loss, head_mask)[0]
+            head_importance += first_derivate.detach()
+        elif args.use_second:
+            def func(head_mask):
+                return model(**inputs, head_mask=head_mask)[0]
+            H = torch.autograd.functional.hessian(func, head_mask).view((n_heads*n_layers, -1)).diagonal().view_as(head_mask)
+            head_importance += H.detach()
+            # first_derivate = torch.autograd.grad(loss, head_mask, create_graph=True)[0]
+            # second_derivate = [torch.autograd.grad(f_d, head_mask, retain_graph=True)[0] for f_d in first_derivate.view(-1)]
+            # second_derivate = torch.diag(torch.cat(second_derivate).view((n_layers*n_heads,-1))).view_as(first_derivate)
+            # head_importance += second_derivate.detach().data
+            # del first_derivate
+        else:
+            loss = model(**inputs, head_mask=head_mask)[0]
+            first_derivate = torch.autograd.grad(loss, head_mask)[0]
+            head_importance += first_derivate.abs().detach()
+
+        tot_tokens += inputs["attention_mask"].float().detach().sum().data
+
+    # Normalize
+    head_importance /= tot_tokens
+    # Layerwise importance normalization
+    if not args.dont_normalize_importance_by_layer:
+        exponent = 2
+        norm_by_layer = torch.pow(torch.pow(head_importance, exponent).sum(-1), 1 / exponent)
+        head_importance /= norm_by_layer.unsqueeze(-1) + 1e-20
+
+    if not args.dont_normalize_global_importance:
+        head_importance = (head_importance - head_importance.min()) / (head_importance.max() - head_importance.min())
 
     # Print/save matrices
     # np.save(os.path.join(args.output_dir, "head_importance.npy"), head_importance.detach().cpu().numpy())
@@ -138,7 +163,7 @@ def compute_heads_importance(
     # head_ranks = head_ranks.view_as(head_importance)
     # print_2d_tensor(head_ranks)
 
-    return head_importance, preds, labels
+    return head_importance
 
 def compute_S(
     args, model, train_dataloader):
@@ -146,7 +171,10 @@ def compute_S(
         - head importance scores according to http://arxiv.org/abs/1905.10650
     """
     # Prepare our tensors
-    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    if args.n_gpu > 1:
+        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
+    else:
+        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     head_mask = torch.ones(n_layers, n_heads).to(args.device)
     head_mask.requires_grad_(requires_grad=True)
@@ -158,14 +186,21 @@ def compute_S(
 
         # Do a forward pass (not with torch.no_grad() since we need gradients for importance score - see below)
         outputs = model(**inputs, head_mask=head_mask)
-        all_attentions = outputs[-1]
+        if args.use_contexts:
+            all_weights = outputs[-2]
+        else:
+            all_weights = outputs[-1]
         
         if step == 0:
             all_S = []
-        for layer, attn_layer in enumerate(all_attentions):
-            attn_layer = attn_layer.detach().transpose(1,2) # (batch, head, token, vector_size) -> (batch, token, head, vector_size)
-            attn_layer = attn_layer.reshape(-1, attn_layer.shape[-2], attn_layer.shape[-1]) # (batch * token, head, vector_size)
-            S = torch.bmm(attn_layer, attn_layer.transpose(1,2)).sum(0) # (batch * token, head, head) -> (head, head)
+        for layer, weights in enumerate(all_weights):
+            if args.use_contexts:
+                new_shape = weights.size()[:-1] + (12,-1) 
+                weights = weights.detach().view(*new_shape) # (batch, token, head * vector_size) -> (batch, token, head, vector_size)
+            else:
+                weights = weights.detach().transpose(1,2) # (batch, head, token, vector_size) -> (batch, token, head, vector_size)
+            weights = weights.reshape(-1, weights.shape[-2], weights.shape[-1]) # (batch * token, head, vector_size)
+            S = torch.bmm(weights, weights.transpose(1,2)).sum(0) # (batch * token, head, head) -> (head, head)
             if step == 0:
                 all_S.append(S)
             else:
@@ -178,14 +213,17 @@ def compute_S(
 
     return all_S
 
+def save_results(scores, sparsities, all_head_masks, file_name):
+    np.save(os.path.join(args.output_dir, file_name+'_scores.npy'), scores)
+    np.save(os.path.join(args.output_dir, file_name+'_sparsities.npy'), sparsities)
+    np.save(os.path.join(args.output_dir, file_name+'_masks.npy'), all_head_masks)
 
-def mask_heads(args, model, train_dataloader, eval_dataloader, early_stop_step=None):
+def mask_heads(args, model, train_dataloader, eval_dataloader, file_name='masking', early_stop_step=None):
     """ This method shows how to mask head (set some heads to zero), to test the effect on the network,
         based on the head importance scores, as described in Michel et al. (http://arxiv.org/abs/1905.10650)
     """
-    head_importance, preds, labels = compute_heads_importance(args, model, train_dataloader, eval_dataloader)
-    preds = np.argmax(preds, axis=1) if args.output_mode == "classification" else np.squeeze(preds)
-    original_score = glue_compute_metrics(args.task_name, preds, labels)[args.metric_name]
+    head_importance = compute_heads_importance(args, model, train_dataloader)
+    original_score = evaluate(args, model, eval_dataloader)
     logger.info("Pruning: original score: %f", original_score)
 
     new_head_mask = torch.ones_like(head_importance)
@@ -193,9 +231,12 @@ def mask_heads(args, model, train_dataloader, eval_dataloader, early_stop_step=N
 
     scores = []
     sparsities = []
+    all_head_masks = []
+
     current_score = original_score
     sparsities.append(0.0)
     scores.append(current_score * 100)
+    all_head_masks.append(new_head_mask.data)
 
     step = 0
 
@@ -221,15 +262,16 @@ def mask_heads(args, model, train_dataloader, eval_dataloader, early_stop_step=N
         print_2d_tensor(new_head_mask)
 
         # Compute metric and head importance again
-        head_importance, preds, labels = compute_heads_importance(
-            args, model, train_dataloader, eval_dataloader, head_mask=new_head_mask.clone()
-        )
-        preds = np.argmax(preds, axis=1) if args.output_mode == "classification" else np.squeeze(preds)
-        current_score = glue_compute_metrics(args.task_name, preds, labels)[args.metric_name]
+        if new_head_mask.sum() != 0:
+            head_importance = compute_heads_importance(
+                args, model, train_dataloader, head_mask=new_head_mask.clone()
+            )
+        current_score = evaluate(args, model, eval_dataloader, head_mask=new_head_mask.clone())
 
         sparsity = 100 - new_head_mask.sum() / new_head_mask.numel() * 100
         scores.append(current_score * 100)
         sparsities.append(sparsity)
+        all_head_masks.append(new_head_mask.data)
 
         logger.info(
             "Masking: current score: %f, remaning heads %d (%.1f percents)",
@@ -244,27 +286,31 @@ def mask_heads(args, model, train_dataloader, eval_dataloader, early_stop_step=N
     logger.info("Final head mask")
     print_2d_tensor(new_head_mask)
 
-    np.save(os.path.join(args.output_dir, "head_mask.npy"), new_head_mask.detach().cpu().numpy())
+    save_results(scores, sparsities, all_head_masks, file_name)
 
-    return scores, sparsities, new_head_mask
+    return scores, sparsities, all_head_masks
 
-def unmask_heads(args, model, train_dataloader, eval_dataloader, early_stop_step=None):
-    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+def unmask_heads(args, model, train_dataloader, eval_dataloader, file_name='unmasking', early_stop_step=None):
+    if args.n_gpu > 1:
+        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
+    else:
+        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     new_head_mask = torch.zeros(n_layers, n_heads).to(args.device)
     num_to_unmask = 12 # max(1, int(new_head_mask.numel() * args.masking_amount))
 
-    head_importance, preds, labels = compute_heads_importance(
-        args, model, train_dataloader, eval_dataloader, head_mask=new_head_mask.clone()
+    head_importance = compute_heads_importance(
+        args, model, train_dataloader, head_mask=new_head_mask.clone()
     )
-    preds = np.argmax(preds, axis=1) if args.output_mode == "classification" else np.squeeze(preds)
-    current_score = glue_compute_metrics(args.task_name, preds, labels)[args.metric_name]
+    current_score = evaluate(args, model, eval_dataloader)
 
     scores = []
     sparsities = []
+    all_head_masks = []
 
     sparsities.append(100)
     scores.append(current_score * 100)
+    all_head_masks.append(new_head_mask.data)
 
     step = 0
 
@@ -289,15 +335,16 @@ def unmask_heads(args, model, train_dataloader, eval_dataloader, early_stop_step
         print_2d_tensor(new_head_mask)
 
         # Compute metric and head importance again
-        head_importance, preds, labels = compute_heads_importance(
-            args, model, train_dataloader, eval_dataloader, head_mask=new_head_mask.clone()
-        )
-        preds = np.argmax(preds, axis=1) if args.output_mode == "classification" else np.squeeze(preds)
-        current_score = glue_compute_metrics(args.task_name, preds, labels)[args.metric_name]
+        if new_head_mask.sum() != new_head_mask.numel():
+            head_importance = compute_heads_importance(
+                args, model, train_dataloader, head_mask=new_head_mask.clone()
+            )
+        current_score = evaluate(args, model, eval_dataloader)
 
         sparsity = 100 - new_head_mask.sum() / new_head_mask.numel() * 100
         scores.append(current_score * 100)
         sparsities.append(sparsity)
+        all_head_masks.append(new_head_mask.data)
 
         logger.info(
             "Masking: current score: %f, remaning heads %d (%.1f percents)",
@@ -311,26 +358,32 @@ def unmask_heads(args, model, train_dataloader, eval_dataloader, early_stop_step
     logger.info("Final head mask")
     print_2d_tensor(new_head_mask)
 
-    np.save(os.path.join(args.output_dir, "head_unmask.npy"), new_head_mask.detach().cpu().numpy())
+    save_results(scores, sparsities, all_head_masks, file_name)
 
-    return scores, sparsities, new_head_mask
+    return scores, sparsities, all_head_masks
 
-def unmask_heads_per_layer(args, model, train_dataloader, eval_dataloader, early_stop_step=None):
-    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+def unmask_heads_per_layer(
+    args, model, train_dataloader, eval_dataloader, file_name='unmasking_per_layer', early_stop_step=None
+):
+    if args.n_gpu > 1:
+        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
+    else:
+        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     new_head_mask = torch.zeros(n_layers, n_heads).to(args.device)
 
-    head_importance, preds, labels = compute_heads_importance(
-        args, model, train_dataloader, eval_dataloader, head_mask=new_head_mask.clone()
+    head_importance = compute_heads_importance(
+        args, model, train_dataloader, head_mask=new_head_mask.clone()
     )
-    preds = np.argmax(preds, axis=1) if args.output_mode == "classification" else np.squeeze(preds)
-    current_score = glue_compute_metrics(args.task_name, preds, labels)[args.metric_name]
+    current_score = evaluate(args, model, eval_dataloader)
 
     scores = []
     sparsities = []
+    all_head_masks = []
 
     sparsities.append(100)
     scores.append(current_score * 100)
+    all_head_masks.append(new_head_mask.data)
 
     step = 0
 
@@ -353,15 +406,16 @@ def unmask_heads_per_layer(args, model, train_dataloader, eval_dataloader, early
         print_2d_tensor(new_head_mask)
 
         # Compute metric and head importance again
-        head_importance, preds, labels = compute_heads_importance(
-            args, model, train_dataloader, eval_dataloader, head_mask=new_head_mask.clone()
-        )
-        preds = np.argmax(preds, axis=1) if args.output_mode == "classification" else np.squeeze(preds)
-        current_score = glue_compute_metrics(args.task_name, preds, labels)[args.metric_name]
+        if new_head_mask.sum() != new_head_mask.numel():
+            head_importance = compute_heads_importance(
+                args, model, train_dataloader, head_mask=new_head_mask.clone()
+            )
+        current_score = evaluate(args, model, eval_dataloader)
 
         sparsity = 100 - new_head_mask.sum() / new_head_mask.numel() * 100
         scores.append(current_score * 100)
         sparsities.append(sparsity)
+        all_head_masks.append(new_head_mask.data)
 
         logger.info(
             "Masking: current score: %f, remaning heads %d (%.1f percents)",
@@ -374,29 +428,33 @@ def unmask_heads_per_layer(args, model, train_dataloader, eval_dataloader, early
     
     logger.info("Final head mask")
     print_2d_tensor(new_head_mask)
+    
+    save_results(scores, sparsities, all_head_masks, file_name)
 
-    np.save(os.path.join(args.output_dir, "head_unmask_per_layer.npy"), new_head_mask.detach().cpu().numpy())
+    return scores, sparsities, all_head_masks
 
-    return scores, sparsities, new_head_mask
-
-def unmask_dpp(args, model, train_dataloader, eval_dataloader, early_stop_step=None):
-    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+def unmask_dpp(args, model, train_dataloader, eval_dataloader, file_name='unmasking_dpp', early_stop_step=None):
+    if args.n_gpu > 1:
+        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
+    else:
+        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     new_head_mask = torch.zeros(n_layers, n_heads).to(args.device)
 
-    head_importance, preds, labels = compute_heads_importance(
-        args, model, train_dataloader, eval_dataloader, head_mask=new_head_mask.clone()
+    head_importance = compute_heads_importance(
+        args, model, train_dataloader, head_mask=new_head_mask.clone()
     )
-    preds = np.argmax(preds, axis=1) if args.output_mode == "classification" else np.squeeze(preds)
-    current_score = glue_compute_metrics(args.task_name, preds, labels)[args.metric_name]
+    current_score = evaluate(args, model, eval_dataloader)
 
     all_S = compute_S(args, model, train_dataloader)
 
     scores = []
     sparsities = []
+    all_head_masks = []
 
     sparsities.append(100)
     scores.append(current_score * 100)
+    all_head_masks.append(new_head_mask.data)
 
     step = 0
 
@@ -446,15 +504,16 @@ def unmask_dpp(args, model, train_dataloader, eval_dataloader, early_stop_step=N
         print_2d_tensor(new_head_mask)
 
         # Compute metric and head importance again
-        head_importance, preds, labels = compute_heads_importance(
-            args, model, train_dataloader, eval_dataloader, head_mask=new_head_mask.clone()
-        )
-        preds = np.argmax(preds, axis=1) if args.output_mode == "classification" else np.squeeze(preds)
-        current_score = glue_compute_metrics(args.task_name, preds, labels)[args.metric_name]
+        if new_head_mask.sum() != new_head_mask.numel():
+            head_importance = compute_heads_importance(
+                args, model, train_dataloader, head_mask=new_head_mask.clone()
+            )
+        current_score = evaluate(args, model, eval_dataloader)
 
         sparsity = 100 - new_head_mask.sum() / new_head_mask.numel() * 100
         scores.append(current_score * 100)
         sparsities.append(sparsity)
+        all_head_masks.append(new_head_mask.data)
 
         logger.info(
             "Masking: current score: %f, remaning heads %d (%.1f percents)",
@@ -468,46 +527,9 @@ def unmask_dpp(args, model, train_dataloader, eval_dataloader, early_stop_step=N
     logger.info("Final head mask")
     print_2d_tensor(new_head_mask)
 
-    np.save(os.path.join(args.output_dir, "head_unmask.npy"), new_head_mask.detach().cpu().numpy())
+    save_results(scores, sparsities, all_head_masks, file_name)
 
-    return scores, sparsities, new_head_mask
-
-def prune_heads(args, model, eval_dataloader, head_mask):
-    """ This method shows how to prune head (remove heads weights) based on
-        the head importance scores as described in Michel et al. (http://arxiv.org/abs/1905.10650)
-    """
-    # Try pruning and test time speedup
-    # Pruning is like masking but we actually remove the masked weights
-    before_time = datetime.now()
-    _, preds, labels = compute_heads_importance(
-        args, model, eval_dataloader, compute_importance=False, head_mask=head_mask
-    )
-    preds = np.argmax(preds, axis=1) if args.output_mode == "classification" else np.squeeze(preds)
-    score_masking = glue_compute_metrics(args.task_name, preds, labels)[args.metric_name]
-    original_time = datetime.now() - before_time
-
-    original_num_params = sum(p.numel() for p in model.parameters())
-    heads_to_prune = dict((layer, (1 - head_mask[layer].long()).nonzero().tolist()) for layer in range(len(head_mask)))
-    assert sum(len(h) for h in heads_to_prune.values()) == (1 - head_mask.long()).sum().item()
-    model.prune_heads(heads_to_prune)
-    pruned_num_params = sum(p.numel() for p in model.parameters())
-
-    before_time = datetime.now()
-    _, preds, labels = compute_heads_importance(
-        args, model, eval_dataloader, compute_importance=False, head_mask=None
-    )
-    preds = np.argmax(preds, axis=1) if args.output_mode == "classification" else np.squeeze(preds)
-    score_pruning = glue_compute_metrics(args.task_name, preds, labels)[args.metric_name]
-    new_time = datetime.now() - before_time
-
-    logger.info(
-        "Pruning: original num of params: %.2e, after pruning %.2e (%.1f percents)",
-        original_num_params,
-        pruned_num_params,
-        pruned_num_params / original_num_params * 100,
-    )
-    logger.info("Pruning: score with masking: %f score with pruning: %f", score_masking, score_pruning)
-    logger.info("Pruning: speed ratio (new timing / original timing): %f percents", original_time / new_time * 100)
+    return scores, sparsities, all_head_masks
 
 def plot_graph(args, scores, sparsities, file_name, label=False):
     plt.plot(sparsities, scores, marker='o', label=file_name)
@@ -530,8 +552,6 @@ def plot_graph(args, scores, sparsities, file_name, label=False):
 
     png_file = os.path.join(args.output_dir, file_name+'.png')
     plt.savefig(png_file)
-    np.save(os.path.join(args.output_dir, file_name+'_scores.npy'), scores)
-    np.save(os.path.join(args.output_dir, file_name+'_sparsities.npy'), sparsities)
 
 def test(args, model, train_dataloader, eval_dataset, K=10):
     lims = np.linspace(0, len(eval_dataset), K+1).astype('int')
@@ -543,10 +563,21 @@ def test(args, model, train_dataloader, eval_dataset, K=10):
         sub_dataloader = DataLoader(
             sub_dataset, sampler=sub_sampler, batch_size=args.batch_size, collate_fn=DefaultDataCollator().collate_batch
         )
-        scores, sparsities, head_mask = mask_heads(args, model, train_dataloader, sub_dataloader)
-        A.append(auc(sparsities, scores).cpu())
-        scores, sparsities, head_mask = unmask_dpp(args, model, train_dataloader, sub_dataloader)
-        B.append(auc(sparsities, scores).cpu())
+        if i == 0:
+            A_scores, A_sparsities, A_head_masks = mask_heads(args, model, train_dataloader, sub_dataloader)
+            A.append(auc(A_sparsities, A_scores).cpu())
+            B_scores, B_sparsities, B_head_masks = unmask_dpp(args, model, train_dataloader, sub_dataloader)
+            B.append(auc(B_sparsities, B_scores).cpu())
+        else:
+            A_scores = []
+            for head_mask in A_head_masks:
+                A_scores.append(evaluate(args, model, sub_dataloader, head_mask=head_mask))
+            A.append(auc(A_sparsities, A_scores).cpu())
+
+            B_scores = []
+            for head_mask in B_head_masks:
+                B_scores.append(evaluate(args, model, sub_dataloader, head_mask=head_mask))
+            B.append(auc(B_sparsities, B_scores).cpu())
     p_value = permutation_test(A, B,
                            method='exact', func=lambda x, y: np.mean(y) - np.mean(x))
     np.save(os.path.join(args.output_dir, "A.npy"), A)
@@ -623,6 +654,15 @@ def main():
         "--dont_normalize_global_importance",
         action="store_true",
         help="Don't normalize all importance scores between 0 and 1",
+    )
+    parser.add_argument(
+        "--dont_use_abs", action="store_true", help="Don't apply abs on first order derivative"
+    )
+    parser.add_argument(
+        "--use_second", action="store_true", help="Use second order derivative as quality"
+    )
+    parser.add_argument(
+        "--use_contexts", action="store_true", help="Use context vectors instead of attentions weights"
     )
 
     parser.add_argument(
@@ -702,6 +742,7 @@ def main():
         config=config,
         cache_dir=args.cache_dir,
     )
+    model.eval()
 
     # Distributed and parallel training
     model.to(args.device)
@@ -739,22 +780,21 @@ def main():
 
     # Try head masking (set heads to zero until the score goes under a threshole)
     # and head pruning (remove masked heads and see the effect on the network)
-    scores, sparsities, head_mask = mask_heads(args, model, train_dataloader, eval_dataloader)
-    plot_graph(args, scores, sparsities, "masking")
-    logger.info("Area under curve: %.2f", auc(sparsities, scores))
+    # scores, sparsities, head_mask = mask_heads(args, model, train_dataloader, eval_dataloader)
+    # logger.info("Area under curve: %.2f", auc(sparsities, scores))
     
     # scores, sparsities, head_mask = unmask_heads(args, model, train_dataloader, eval_dataloader)
-    # plot_graph(args, scores, sparsities, "unmasking")
     # logger.info("Area under curve: %.2f", auc(sparsities, scores))
 
-    # scores, sparsities, head_mask = unmask_heads_per_layer(args, model, train_dataloader, eval_dataloader)
-    # plot_graph(args, scores, sparsities, "unmasking_per_layer")
-    # logger.info("Area under curve: %.2f", auc(sparsities, scores))
-
-    scores, sparsities, head_mask = unmask_dpp(args, model, train_dataloader, eval_dataloader)
-    plot_graph(args, scores, sparsities, "unmasking_dpp", label=True)
+    scores, sparsities, head_mask = unmask_heads_per_layer(args, model, train_dataloader, eval_dataloader)
     logger.info("Area under curve: %.2f", auc(sparsities, scores))
-        # prune_heads(args, model, eval_dataloader, head_mask)
+
+    # scores, sparsities, head_mask = unmask_dpp(args, model, train_dataloader, eval_dataloader)
+    # logger.info("Area under curve: %.2f", auc(sparsities, scores))
+
+    # args.use_contexts = True
+    # scores, sparsities, head_mask = unmask_dpp(args, model, train_dataloader, eval_dataloader)
+    # logger.info("Area under curve: %.2f", auc(sparsities, scores))
 
 
 if __name__ == "__main__":
