@@ -36,7 +36,8 @@ from .modeling_utils import PreTrainedModel, apply_chunking_to_forward
 logger = logging.getLogger(__name__)
 
 REFORMER_PRETRAINED_MODEL_ARCHIVE_MAP = {
-    "google/reformer-crime-and-punishment": "https://cdn.huggingface.co/google/reformer-crime-and-punishment/pytorch_model.bin"
+    "google/reformer-crime-and-punishment": "https://cdn.huggingface.co/google/reformer-crime-and-punishment/pytorch_model.bin",
+    "google/reformer-enwik8": "https://cdn.huggingface.co/google/reformer-enwik8/pytorch_model.bin",
 }
 
 
@@ -282,6 +283,8 @@ class EfficientAttentionMixin:
 class LSHSelfAttention(nn.Module, EfficientAttentionMixin):
     def __init__(self, config):
         super().__init__()
+        self.config = config
+
         self.chunk_length = config.lsh_attn_chunk_length
         self.num_hashes = config.num_hashes
         self.num_buckets = config.num_buckets
@@ -531,15 +534,22 @@ class LSHSelfAttention(nn.Module, EfficientAttentionMixin):
         return sorted_bucket_idx, undo_sorted_bucket_idx
 
     def _set_num_buckets(self, sequence_length):
-        # recommended `num_buckets` from paper
-        num_buckets = 2 * sequence_length // self.chunk_length
+        # `num_buckets` should be set to 2 * sequence_length // chunk_length as recommended in paper
+        num_buckets_pow_2 = (2 * (sequence_length // self.chunk_length)).bit_length() - 1
+        # make sure buckets are power of 2
+        num_buckets = 2 ** num_buckets_pow_2
 
         # factorize `num_buckets` if `num_buckets` becomes too large
-        num_buckets_limit = max(int((self.max_position_embeddings // self.chunk_length) ** (0.5)), self.chunk_length,)
-        if num_buckets > 2 * num_buckets_limit:
-            num_buckets = [num_buckets_limit, num_buckets // num_buckets_limit + 1]
+        num_buckets_limit = 2 * max(
+            int((self.max_position_embeddings // self.chunk_length) ** (0.5)), self.chunk_length,
+        )
+        if num_buckets > num_buckets_limit:
+            num_buckets = [2 ** (num_buckets_pow_2 // 2), 2 ** (num_buckets_pow_2 - num_buckets_pow_2 // 2)]
 
         logger.warning("config.num_buckets is not set. Setting config.num_buckets to {}...".format(num_buckets))
+
+        # set num buckets in config to be properly saved
+        self.config.num_buckets = num_buckets
         self.num_buckets = num_buckets
 
     def _attend(
@@ -561,8 +571,8 @@ class LSHSelfAttention(nn.Module, EfficientAttentionMixin):
 
         # get correct mask values depending on precision
         if query_key_dots.dtype == torch.float16:
-            self_mask_value = self.self_mask_value_float16
-            mask_value = self.mask_value_float16
+            self_mask_value = self.self_mask_value_float16.half()
+            mask_value = self.mask_value_float16.half()
         else:
             self_mask_value = self.self_mask_value_float32
             mask_value = self.mask_value_float32
@@ -833,7 +843,7 @@ class LocalSelfAttention(nn.Module, EfficientAttentionMixin):
         if mask is not None:
             # get mask tensor depending on half precision or not
             if query_key_dots.dtype == torch.float16:
-                mask_value = self.mask_value_float16
+                mask_value = self.mask_value_float16.half()
             else:
                 mask_value = self.mask_value_float32
 
@@ -1652,7 +1662,7 @@ class ReformerModel(ReformerPreTrainedModel):
                 padded_position_ids = position_ids.unsqueeze(0).expand(input_shape[0], padding_length)
                 position_ids = torch.cat([position_ids, padded_position_ids], dim=-1)
 
-        # Extend `input_embeds` with padding to match least common multiple chunk_length
+        # Extend `inputs_embeds` with padding to match least common multiple chunk_length
         if inputs_embeds is not None:
             padded_inputs_embeds = self.embeddings(padded_input_ids, position_ids)
             inputs_embeds = torch.cat([inputs_embeds, padded_inputs_embeds], dim=-2)

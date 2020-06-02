@@ -1,7 +1,7 @@
 ## Named Entity Recognition
 
-Based on the scripts [`run_ner.py`](https://github.com/huggingface/transformers/blob/master/examples/ner/run_ner.py) for Pytorch and
-[`run_tf_ner.py`](https://github.com/huggingface/transformers/blob/master/examples/ner/run_tf_ner.py) for Tensorflow 2.
+Based on the scripts [`run_ner.py`](https://github.com/huggingface/transformers/blob/master/examples/token-classification/run_ner.py) for Pytorch and
+[`run_tf_ner.py`](https://github.com/huggingface/transformers/blob/master/examples/token-classification/run_tf_ner.py) for Tensorflow 2.
 This example fine-tune Bert Multilingual on GermEval 2014 (German NER).
 Details and results for the fine-tuning provided by @stefan-it.
 
@@ -69,7 +69,7 @@ python3 run_ner.py --data_dir ./ \
 --output_dir $OUTPUT_DIR \
 --max_seq_length  $MAX_LENGTH \
 --num_train_epochs $NUM_EPOCHS \
---per_gpu_train_batch_size $BATCH_SIZE \
+--per_device_train_batch_size $BATCH_SIZE \
 --save_steps $SAVE_STEPS \
 --seed $SEED \
 --do_train \
@@ -91,7 +91,7 @@ Instead of passing all parameters via commandline arguments, the `run_ner.py` sc
     "output_dir": "germeval-model",
     "max_seq_length": 128,
     "num_train_epochs": 3,
-    "per_gpu_train_batch_size": 32,
+    "per_device_train_batch_size": 32,
     "save_steps": 750,
     "seed": 1,
     "do_train": true,
