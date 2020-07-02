@@ -52,16 +52,18 @@ Some of these results are significantly different from the ones reported on the 
 of GLUE benchmark on the website. For QQP and WNLI, please refer to [FAQ #12](https://gluebenchmark.com/faq) on the webite.
 
 Before running any one of these GLUE tasks you should download the
-[GLUE data](https://gluebenchmark.com/tasks) by running
-[this script](https://gist.github.com/W4ngatang/60c2bdb54d156a41194446737ce03e2e)
-and unpack it to some directory `$GLUE_DIR`.
+[GLUE data](https://gluebenchmark.com/tasks) by running the following lines at the root of the repo
+```
+python utils/download_glue_data.py --data_dir /path/to/glue --tasks all
+```
+
+after replacing *path/to/glue* with a value that you like. Then you can run
 
 ```bash
 export GLUE_DIR=/path/to/glue
 export TASK_NAME=MRPC
 
 python run_glue.py \
-  --model_type bert \
   --model_name_or_path bert-base-cased \
   --task_name $TASK_NAME \
   --do_train \
@@ -258,7 +260,7 @@ TEST RESULTS {'val_loss': tensor(0.0707), 'precision': 0.852427800698191, 'recal
 
 Based on the script [`run_xnli.py`](https://github.com/huggingface/transformers/blob/master/examples/text-classification/run_xnli.py).
 
-[XNLI](https://www.nyu.edu/projects/bowman/xnli/) is crowd-sourced dataset based on [MultiNLI](http://www.nyu.edu/projects/bowman/multinli/). It is an evaluation benchmark for cross-lingual text representations. Pairs of text are labeled with textual entailment annotations for 15 different languages (including both high-resource language such as English and low-resource languages such as Swahili).
+[XNLI](https://www.nyu.edu/projects/bowman/xnli/) is a crowd-sourced dataset based on [MultiNLI](http://www.nyu.edu/projects/bowman/multinli/). It is an evaluation benchmark for cross-lingual text representations. Pairs of text are labeled with textual entailment annotations for 15 different languages (including both high-resource language such as English and low-resource languages such as Swahili).
 
 #### Fine-tuning on XNLI
 
@@ -273,7 +275,6 @@ on a single tesla V100 16GB. The data for XNLI can be downloaded with the follow
 export XNLI_DIR=/path/to/XNLI
 
 python run_xnli.py \
-  --model_type bert \
   --model_name_or_path bert-base-multilingual-cased \
   --language de \
   --train_language en \

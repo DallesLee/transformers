@@ -13,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Fine-tuning the library models for named entity recognition on CoNLL-2003 (Bert or Roberta). """
+""" Fine-tuning the library models for named entity recognition on CoNLL-2003. """
 
 
 import logging
@@ -75,7 +75,8 @@ class DataTrainingArguments:
         metadata={"help": "The input data dir. Should contain the .txt files for a CoNLL-2003-formatted task."}
     )
     labels: Optional[str] = field(
-        metadata={"help": "Path to a file containing all labels. If not specified, CoNLL-2003 labels are used."}
+        default=None,
+        metadata={"help": "Path to a file containing all labels. If not specified, CoNLL-2003 labels are used."},
     )
     max_seq_length: int = field(
         default=128,
