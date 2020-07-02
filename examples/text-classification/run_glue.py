@@ -36,6 +36,7 @@ from transformers import (
     glue_tasks_num_labels,
     set_seed,
 )
+from torch.utils.data import Subset
 
 
 logger = logging.getLogger(__name__)
@@ -135,6 +136,8 @@ def main():
 
     # Get datasets
     train_dataset = GlueDataset(data_args, tokenizer=tokenizer) if training_args.do_train else None
+    split = int(len(train_dataset) * 0.9)
+    train_dataset = Subset(train_dataset, list(range(split)))
     eval_dataset = GlueDataset(data_args, tokenizer=tokenizer, mode="dev") if training_args.do_eval else None
     test_dataset = GlueDataset(data_args, tokenizer=tokenizer, mode="test") if training_args.do_predict else None
 
