@@ -39,7 +39,7 @@ from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
     AutoTokenizer,
-    DefaultDataCollator,
+    default_data_collator,
     GlueDataset,
     glue_compute_metrics,
     glue_output_modes,
@@ -1149,7 +1149,7 @@ def test(args, model, train_dataloader, eval_dataset, K=10):
         sub_dataset = Subset(eval_dataset, list(range(lims[i], lims[i+1])))
         sub_sampler = SequentialSampler(sub_dataset) if args.local_rank == -1 else DistributedSampler(sub_dataset)
         sub_dataloader = DataLoader(
-            sub_dataset, sampler=sub_sampler, batch_size=args.batch_size, collate_fn=DefaultDataCollator().collate_batch
+            sub_dataset, sampler=sub_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
         )
         if i == 0:
             A_scores, A_sparsities, A_head_masks = mask_heads(args, model, train_dataloader, sub_dataloader)
@@ -1355,12 +1355,12 @@ def main():
     train_dataset = Subset(train_val_dataset, list(range(split)))
     train_sampler = SequentialSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(
-        train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=DefaultDataCollator().collate_batch
+        train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
     )
     val_dataset = Subset(train_val_dataset, list(range(split, len(train_val_dataset))))
     val_sampler = SequentialSampler(val_dataset) if args.local_rank == -1 else DistributedSampler(val_dataset)
     val_dataloader = DataLoader(
-        val_dataset, sampler=val_sampler, batch_size=args.batch_size, collate_fn=DefaultDataCollator().collate_batch
+        val_dataset, sampler=val_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
     )
 
     eval_dataset = GlueDataset(args, tokenizer=tokenizer, mode="dev")
@@ -1368,7 +1368,7 @@ def main():
         eval_dataset = Subset(eval_dataset, list(range(min(args.data_subset, len(eval_dataset)))))
     eval_sampler = SequentialSampler(eval_dataset) if args.local_rank == -1 else DistributedSampler(eval_dataset)
     eval_dataloader = DataLoader(
-        eval_dataset, sampler=eval_sampler, batch_size=args.batch_size, collate_fn=DefaultDataCollator().collate_batch
+        eval_dataset, sampler=eval_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
     )
 
     # p_value = test(args, model, train_dataloader, eval_dataset)
