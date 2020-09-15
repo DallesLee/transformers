@@ -38,6 +38,7 @@ from transformers import (
 )
 from utils_ner import NerDataset, Split, get_labels
 
+from torch.utils.data import Subset
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +177,8 @@ def main():
         if training_args.do_train
         else None
     )
+    split = int(len(train_dataset) * 0.9)
+    train_dataset = Subset(train_dataset, list(range(split)))
     eval_dataset = (
         NerDataset(
             data_dir=data_args.data_dir,

@@ -1,5 +1,5 @@
 #!/bin/sh
-dataset="MRPC"
+dataset="QNLI"
 task="${dataset~~}"
 
 # python ../../utils/download_glue_data.py --data_dir data/
