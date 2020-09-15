@@ -24,14 +24,11 @@ from typing import TYPE_CHECKING, Dict, List, Tuple, Union
 
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerBase, PreTrainedTokenizerFast
 from transformers.testing_utils import require_tf, require_torch, slow
+from transformers.tokenization_utils import AddedToken
 
 
 if TYPE_CHECKING:
-    from transformers import (
-        PretrainedConfig,
-        PreTrainedModel,
-        TFPreTrainedModel,
-    )
+    from transformers import PretrainedConfig, PreTrainedModel, TFPreTrainedModel
 
 
 def merge_model_tokenizer_mappings(
@@ -159,7 +156,7 @@ class TokenizerTesterMixin:
         tokenizers = self.get_tokenizers()
         for tokenizer in tokenizers:
             with self.subTest(f"{tokenizer.__class__.__name__}"):
-                self.assertNotEqual(tokenizer.max_len, 42)
+                self.assertNotEqual(tokenizer.model_max_length, 42)
 
         # Now let's start the test
         tokenizers = self.get_tokenizers()
@@ -232,6 +229,12 @@ class TokenizerTesterMixin:
                 subwords_loaded = tokenizer_new.tokenize(text)
 
                 self.assertListEqual(subwords, subwords_loaded)
+
+    def test_pickle_added_tokens(self):
+        tok1 = AddedToken("<s>", rstrip=True, lstrip=True, normalized=False, single_word=True)
+        tok2 = pickle.loads(pickle.dumps(tok1))
+
+        self.assertEqual(tok1.__getstate__(), tok2.__getstate__())
 
     def test_added_tokens_do_lower_case(self):
         # TODO(thom) activate fast tokenizer tests once Rust tokenizers accepts white spaces in added tokens
@@ -508,9 +511,7 @@ class TokenizerTesterMixin:
                     self.assertEqual(len(truncated_sequence), total_length - 2)
                     self.assertEqual(truncated_sequence, sequence[:-2])
 
-                    self.assertEqual(
-                        len(overflowing_tokens), 0
-                    )  # No overflowing tokens when using 'longest' in python tokenizers
+                    self.assertEqual(len(overflowing_tokens), 2 + stride)
 
     def test_maximum_encoding_length_pair_input(self):
         tokenizers = self.get_tokenizers(do_lower_case=False, model_max_length=100)
@@ -634,7 +635,39 @@ class TokenizerTesterMixin:
                     self.assertEqual(truncated_sequence, truncated_longest_sequence)
 
                     self.assertEqual(
-                        len(overflowing_tokens), 0
+                        len(overflowing_tokens), 2 + stride
+                    )  # No overflowing tokens when using 'longest' in python tokenizers
+
+                information = tokenizer.encode_plus(
+                    seq_0,
+                    seq_1,
+                    max_length=len(sequence) - 2,
+                    add_special_tokens=False,
+                    stride=stride,
+                    truncation=True,
+                    return_overflowing_tokens=True,
+                    # add_prefix_space=False,
+                )
+                # Overflowing tokens are handled quite differently in slow and fast tokenizers
+                if isinstance(tokenizer, PreTrainedTokenizerFast):
+                    truncated_sequence = information["input_ids"][0]
+                    overflowing_tokens = information["input_ids"][1]
+                    self.assertEqual(len(information["input_ids"]), 2)
+
+                    self.assertEqual(len(truncated_sequence), len(sequence) - 2)
+                    self.assertEqual(truncated_sequence, truncated_longest_sequence)
+
+                    self.assertEqual(len(overflowing_tokens), 2 + stride + len(smallest))
+                    self.assertEqual(overflowing_tokens, overflow_longest_sequence)
+                else:
+                    truncated_sequence = information["input_ids"]
+                    overflowing_tokens = information["overflowing_tokens"]
+
+                    self.assertEqual(len(truncated_sequence), len(sequence) - 2)
+                    self.assertEqual(truncated_sequence, truncated_longest_sequence)
+
+                    self.assertEqual(
+                        len(overflowing_tokens), 2 + stride
                     )  # No overflowing tokens when using 'longest' in python tokenizers
 
                 information_first_truncated = tokenizer.encode_plus(
@@ -643,7 +676,7 @@ class TokenizerTesterMixin:
                     max_length=len(sequence) - 2,
                     add_special_tokens=False,
                     stride=stride,
-                    truncation=True,
+                    truncation="only_first",
                     return_overflowing_tokens=True,
                     # add_prefix_space=False,
                 )
@@ -849,8 +882,7 @@ class TokenizerTesterMixin:
                 assert encoded_sequence == padded_sequence_left
 
     def test_padding_to_max_length(self):
-        """ We keep this test for backward compatibility but it should be remove when `pad_to_max_length` will e deprecated
-        """
+        """We keep this test for backward compatibility but it should be remove when `pad_to_max_length` will e deprecated"""
         tokenizers = self.get_tokenizers(do_lower_case=False)
         for tokenizer in tokenizers:
             with self.subTest(f"{tokenizer.__class__.__name__}"):
@@ -866,6 +898,7 @@ class TokenizerTesterMixin:
                 tokenizer.padding_side = "right"
                 encoded_sequence = tokenizer.encode(sequence)
                 sequence_length = len(encoded_sequence)
+                # FIXME: the next line should be padding(max_length) to avoid warning
                 padded_sequence = tokenizer.encode(
                     sequence, max_length=sequence_length + padding_size, pad_to_max_length=True
                 )
@@ -938,7 +971,11 @@ class TokenizerTesterMixin:
                 # Test 'longest' and 'no_padding' don't do anything
                 tokenizer.padding_side = "right"
 
-                not_padded_sequence = tokenizer.encode_plus(sequence, padding=True, return_special_tokens_mask=True,)
+                not_padded_sequence = tokenizer.encode_plus(
+                    sequence,
+                    padding=True,
+                    return_special_tokens_mask=True,
+                )
                 not_padded_input_ids = not_padded_sequence["input_ids"]
 
                 not_padded_special_tokens_mask = not_padded_sequence["special_tokens_mask"]
@@ -948,7 +985,11 @@ class TokenizerTesterMixin:
                 assert input_ids == not_padded_input_ids
                 assert special_tokens_mask == not_padded_special_tokens_mask
 
-                not_padded_sequence = tokenizer.encode_plus(sequence, padding=False, return_special_tokens_mask=True,)
+                not_padded_sequence = tokenizer.encode_plus(
+                    sequence,
+                    padding=False,
+                    return_special_tokens_mask=True,
+                )
                 not_padded_input_ids = not_padded_sequence["input_ids"]
 
                 not_padded_special_tokens_mask = not_padded_sequence["special_tokens_mask"]
@@ -1026,10 +1067,6 @@ class TokenizerTesterMixin:
 
                 self.assertIsInstance(vocab, dict)
                 self.assertEqual(len(vocab), len(tokenizer))
-
-                for word, ind in vocab.items():
-                    self.assertEqual(tokenizer.convert_tokens_to_ids(word), ind)
-                    self.assertEqual(tokenizer.convert_ids_to_tokens(ind), word)
 
                 tokenizer.add_tokens(["asdfasdfasdfasdf"])
                 vocab = tokenizer.get_vocab()
@@ -1118,7 +1155,8 @@ class TokenizerTesterMixin:
                 )
                 for key in encoded_sequences_batch_padded_1.keys():
                     self.assertListEqual(
-                        encoded_sequences_batch_padded_1[key], encoded_sequences_batch_padded_2[key],
+                        encoded_sequences_batch_padded_1[key],
+                        encoded_sequences_batch_padded_2[key],
                     )
 
                 # check 'no_padding' is unsensitive to a max length
@@ -1128,8 +1166,19 @@ class TokenizerTesterMixin:
                 )
                 for key in encoded_sequences_batch_padded_1.keys():
                     self.assertListEqual(
-                        encoded_sequences_batch_padded_1[key], encoded_sequences_batch_padded_2[key],
+                        encoded_sequences_batch_padded_1[key],
+                        encoded_sequences_batch_padded_2[key],
                     )
+
+    def test_added_token_serializable(self):
+        tokenizers = self.get_tokenizers(do_lower_case=False)
+        for tokenizer in tokenizers:
+            new_token = AddedToken("new_token", lstrip=True)
+            tokenizer.add_special_tokens({"additional_special_tokens": [new_token]})
+
+            with tempfile.TemporaryDirectory() as tmp_dir_name:
+                tokenizer.save_pretrained(tmp_dir_name)
+                tokenizer.from_pretrained(tmp_dir_name)
 
     def test_batch_encode_plus_padding(self):
         # Test that padded sequences are equivalent between batch_encode_plus and encode_plus
@@ -1293,6 +1342,28 @@ class TokenizerTesterMixin:
                 for key in output.keys():
                     self.assertEqual(output[key], output_sequence[key])
 
+    def test_prepare_for_model(self):
+        tokenizers = self.get_tokenizers(do_lower_case=False)
+        for tokenizer in tokenizers:
+            string_sequence = "Testing the prepare_for_model method."
+            ids = tokenizer.encode(string_sequence, add_special_tokens=False)
+            input_dict = tokenizer.encode_plus(string_sequence)
+            prepared_input_dict = tokenizer.prepare_for_model(ids)
+
+            self.assertEqual(input_dict, prepared_input_dict)
+
+    def test_batch_encode_plus_overflowing_tokens(self):
+        tokenizers = self.get_tokenizers(do_lower_case=False)
+        for tokenizer in tokenizers:
+            string_sequences = ["Testing the prepare_for_model method.", "Test"]
+
+            if tokenizer.pad_token is None:
+                tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+
+            tokenizer.batch_encode_plus(
+                string_sequences, return_overflowing_tokens=True, truncation=True, padding=True, max_length=3
+            )
+
     @require_torch
     @require_tf
     def test_batch_encode_plus_tensors(self):
@@ -1311,10 +1382,18 @@ class TokenizerTesterMixin:
 
                 if tokenizer.pad_token_id is None:
                     self.assertRaises(
-                        ValueError, tokenizer.batch_encode_plus, sequences, padding=True, return_tensors="pt",
+                        ValueError,
+                        tokenizer.batch_encode_plus,
+                        sequences,
+                        padding=True,
+                        return_tensors="pt",
                     )
                     self.assertRaises(
-                        ValueError, tokenizer.batch_encode_plus, sequences, padding="longest", return_tensors="tf",
+                        ValueError,
+                        tokenizer.batch_encode_plus,
+                        sequences,
+                        padding="longest",
+                        return_tensors="tf",
                     )
                 else:
                     pytorch_tensor = tokenizer.batch_encode_plus(sequences, padding=True, return_tensors="pt")
@@ -1344,6 +1423,7 @@ class TokenizerTesterMixin:
     @require_torch
     def test_torch_encode_plus_sent_to_model(self):
         import torch
+
         from transformers import MODEL_MAPPING, TOKENIZER_MAPPING
 
         MODEL_TOKENIZER_MAPPING = merge_model_tokenizer_mappings(MODEL_MAPPING, TOKENIZER_MAPPING)
@@ -1468,3 +1548,45 @@ class TokenizerTesterMixin:
 
             if batch_encoded_sequence_fast is None:
                 raise ValueError("Cannot convert list to numpy tensor on  batch_encode_plus() (fast)")
+
+    @require_torch
+    def test_prepare_seq2seq_batch(self):
+        tokenizer = self.get_tokenizer()
+
+        if not hasattr(tokenizer, "prepare_seq2seq_batch"):
+            return
+        # Longer text that will definitely require truncation.
+        src_text = [
+            " UN Chief Says There Is No Military Solution in Syria",
+            " Secretary-General Ban Ki-moon says his response to Russia's stepped up military support for Syria is that 'there is no military solution' to the nearly five-year conflict and more weapons will only worsen the violence and misery for millions of people.",
+        ]
+        tgt_text = [
+            "Şeful ONU declară că nu există o soluţie militară în Siria",
+            "Secretarul General Ban Ki-moon declară că răspunsul său la intensificarea sprijinului militar al Rusiei "
+            'pentru Siria este că "nu există o soluţie militară" la conflictul de aproape cinci ani şi că noi arme nu '
+            "vor face decât să înrăutăţească violenţele şi mizeria pentru milioane de oameni.",
+        ]
+        try:
+            batch = tokenizer.prepare_seq2seq_batch(
+                src_texts=src_text,
+                tgt_texts=tgt_text,
+                max_length=3,
+                max_target_length=10,
+                return_tensors="pt",
+                src_lang="en_XX",  # this should be ignored (for all but mbart) but not cause an error
+            )
+        except NotImplementedError:
+            return
+        self.assertEqual(batch.input_ids.shape[1], 3)
+        self.assertEqual(batch.labels.shape[1], 10)
+        # max_target_length will default to max_length if not specified
+        batch = tokenizer.prepare_seq2seq_batch(src_text, tgt_texts=tgt_text, max_length=3)
+        self.assertEqual(batch.input_ids.shape[1], 3)
+        self.assertEqual(batch.labels.shape[1], 3)
+
+        batch_encoder_only = tokenizer.prepare_seq2seq_batch(
+            src_texts=src_text, max_length=3, max_target_length=10, return_tensors="pt"
+        )
+        self.assertEqual(batch_encoder_only.input_ids.shape[1], 3)
+        self.assertEqual(batch_encoder_only.attention_mask.shape[1], 3)
+        self.assertNotIn("decoder_input_ids", batch_encoder_only)
