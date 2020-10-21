@@ -247,7 +247,7 @@ if __name__ == "__main__":
     logger.info("Training/evaluation parameters %s", args)
 
     # Get datasets
-    train_val_dataset = NerDataset(
+    train_dataset = NerDataset(
             data_dir=args.data_dir,
             tokenizer=tokenizer,
             labels=labels,
@@ -256,13 +256,12 @@ if __name__ == "__main__":
             overwrite_cache=False,
             mode=Split.train,
         )
-    split = int(len(train_val_dataset) * 0.9)
-    train_dataset = Subset(train_val_dataset, list(range(split)))
+    split = int(len(train_dataset) * 0.9)
     train_sampler = SequentialSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(
         train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
     )
-    val_dataset = Subset(train_val_dataset, list(range(split, len(train_val_dataset))))
+    val_dataset = Subset(train_dataset, list(range(split, len(train_dataset))))
     val_sampler = SequentialSampler(val_dataset) if args.local_rank == -1 else DistributedSampler(val_dataset)
     val_dataloader = DataLoader(
         val_dataset, sampler=val_sampler, batch_size=args.batch_size, collate_fn=default_data_collator

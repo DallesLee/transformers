@@ -138,8 +138,6 @@ def main():
     train_dataset = (
         GlueDataset(data_args, tokenizer=tokenizer, cache_dir=model_args.cache_dir) if training_args.do_train else None
     )
-    split = int(len(train_dataset) * 0.9)
-    train_dataset = Subset(train_dataset, list(range(split)))
     eval_dataset = (
         GlueDataset(data_args, tokenizer=tokenizer, mode="dev", cache_dir=model_args.cache_dir)
         if training_args.do_eval

@@ -190,8 +190,6 @@ def main():
         if training_args.do_train
         else None
     )
-    split = int(len(train_dataset) * 0.9)
-    train_dataset = Subset(train_dataset, list(range(split)))
     eval_dataset = (
         TokenClassificationDataset(
             token_classification_task=token_classification_task,

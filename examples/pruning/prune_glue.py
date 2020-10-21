@@ -329,14 +329,13 @@ def main():
     logger.info("Training/evaluation parameters %s", args)
 
     # Prepare dataset for the GLUE task
-    train_val_dataset = GlueDataset(args, tokenizer=tokenizer)
-    split = int(len(train_val_dataset) * 0.9)
-    train_dataset = Subset(train_val_dataset, list(range(split)))
+    train_dataset = GlueDataset(args, tokenizer=tokenizer)
+    split = int(len(train_dataset) * 0.9)
     train_sampler = SequentialSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(
         train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
     )
-    val_dataset = Subset(train_val_dataset, list(range(split, len(train_val_dataset))))
+    val_dataset = Subset(train_dataset, list(range(split, len(train_dataset))))
     val_sampler = SequentialSampler(val_dataset) if args.local_rank == -1 else DistributedSampler(val_dataset)
     val_dataloader = DataLoader(
         val_dataset, sampler=val_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
@@ -363,17 +362,17 @@ def main():
     # head_importance = compute_heads_importance(args, model, train_dataloader)
     # head_importance = torch.Tensor(np.load(os.path.join(args.output_dir, "head_importance.npy"))).to(args.device)
     args.exact_pruning = True
-    args.dont_normalize_importance_by_layer = True
+    # args.dont_normalize_importance_by_layer = True
     # args.use_second = True
-    # scores, sparsities, all_head_masks = mask_heads(
-    #     args, model, train_dataloader, eval_dataloader
-    # )
-    # logger.info("Area under curve: %.2f", auc(sparsities, scores))
+    scores, sparsities, all_head_masks = mask_heads(
+        args, model, train_dataloader, eval_dataloader
+    )
+    logger.info("Area under curve: %.2f", auc(sparsities, scores))
     
-    # scores, sparsities, all_head_masks = unmask_heads(
-    #     args, model, train_dataloader, eval_dataloader
-    # )
-    # logger.info("Area under curve: %.2f", auc(sparsities, scores))
+    scores, sparsities, all_head_masks = unmask_heads(
+        args, model, train_dataloader, eval_dataloader
+    )
+    logger.info("Area under curve: %.2f", auc(sparsities, scores))
 
     # score, sparisity, head_mask = gibbs_sampling(
     #     args, model, train_dataloader, eval_dataloader, val_dataloader=val_dataloader, early_stop_step=24, K=2, n_groups=1
@@ -450,6 +449,6 @@ def main():
 #     head_mask = np.array(re.split(" ", head_mask)).reshape(12,12).astype("float")
 #     head_mask = torch.Tensor(head_mask).to(args.device)
 #     logger.info(evaluate(args, model, eval_dataloader, head_mask))
-    random_sampling(args, model, eval_dataloader, val_dataloader, early_stop_step=36, K=6, n_groups=1)
+    # random_sampling(args, model, eval_dataloader, val_dataloader, early_stop_step=36, K=6, n_groups=1)
 if __name__ == "__main__":
     main()
