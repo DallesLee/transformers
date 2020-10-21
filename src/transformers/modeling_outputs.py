@@ -87,7 +87,6 @@ class BaseModelOutputWithPooling(ModelOutput):
     pooler_output: torch.FloatTensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
-    total_reg: Optional[torch.FloatTensor] = None
 
 @dataclass
 class BaseModelOutputWithPoolingConcrete(ModelOutput):
@@ -119,6 +118,7 @@ class BaseModelOutputWithPoolingConcrete(ModelOutput):
     pooler_output: torch.FloatTensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
+    total_reg: Optional[torch.FloatTensor] = None
 
 
 @dataclass

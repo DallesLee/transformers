@@ -27,8 +27,6 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn import CrossEntropyLoss, 
 
-from 
-
 from .activations import gelu, gelu_new, swish
 from .configuration_bert import BertConfig
 from .file_utils import (
@@ -48,6 +46,8 @@ from .modeling_outputs import (
     QuestionAnsweringModelOutput,
     SequenceClassifierOutput,
     TokenClassifierOutput,
+    BaseModelOutputConcrete,
+    BaseModelOutputWithPoolingConcrete,
 )
 from .modeling_utils import (
     PreTrainedModel,
@@ -909,7 +909,7 @@ class BertModelConcrete(BertPreTrainedModel):
         if not return_dict:
             return (sequence_output, pooled_output) + encoder_outputs[1:]
 
-        return BaseModelOutputWithPooling(
+        return BaseModelOutputWithPoolingConcrete(
             last_hidden_state=sequence_output,
             pooler_output=pooled_output,
             hidden_states=encoder_outputs.hidden_states,
