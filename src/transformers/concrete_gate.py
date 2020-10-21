@@ -58,7 +58,7 @@ class ConcreteGate(nn.Module):
         p_open = torch.sigmoid(self.log_a - self.temperature * np.log(-low / high))
         p_open = torch.clamp(p_open, self.eps, 1.0 - self.eps)
 
-        total_reg =  self.l0_penalty * torch.sum(p_open)
+        total_reg = self.l0_penalty * torch.sum(p_open)
         return total_reg
 
     def get_sparsity_rate(self):
