@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import numpy as np
 
 class ConcreteGate(nn.Module):
     """
@@ -54,7 +55,7 @@ class ConcreteGate(nn.Module):
         low, high = self.stretch_limits
         assert low < 0.0, "p_gate_closed can be computed only if lower stretch limit is negative"
         # compute p(gate_is_closed) = cdf(stretched_sigmoid < 0)
-        p_open = torch.sigmoid(self.log_a - self.temperature * torch.log(-low / high))
+        p_open = torch.sigmoid(self.log_a - self.temperature * np.log(-low / high))
         p_open = torch.clamp(p_open, self.eps, 1.0 - self.eps)
 
         total_reg +=  self.l0_penalty * torch.sum(p_open)
