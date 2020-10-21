@@ -25,7 +25,7 @@ from typing import Optional, Tuple
 import torch
 import torch.utils.checkpoint
 from torch import nn
-from torch.nn import CrossEntropyLoss, 
+from torch.nn import CrossEntropyLoss, MSELoss
 
 from .activations import gelu, gelu_new, swish
 from .configuration_bert import BertConfig
