@@ -281,6 +281,12 @@ if is_torch_available():
         BertPreTrainedModel,
         load_tf_weights_in_bert,
     )
+    from .modeling_gated_bert import (
+        BertForMultipleChoiceConcrete,
+        BertForQuestionAnsweringConcrete,
+        BertForSequenceClassificationConcrete,
+        BertForTokenClassificationConcrete,
+    )
     from .modeling_bert_generation import (
         BertGenerationDecoder,
         BertGenerationEncoder,
