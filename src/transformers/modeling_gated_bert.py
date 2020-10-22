@@ -994,7 +994,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         loss += outputs[-1]
 
         if not return_dict:
-            output = (logits,) + outputs[2:]
+            output = (logits,) + outputs[2:-1]
             return ((loss,) + output) if loss is not None else output
 
         return SequenceClassifierOutput(
