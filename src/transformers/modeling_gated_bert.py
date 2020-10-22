@@ -342,7 +342,10 @@ class BertSelfAttentionConcrete(BertSelfAttention):
         attention_probs = self.dropout(attention_probs)
 
         # Mask heads if we want to
-        attention_probs = self.gate(attention_probs)
+        if head_mask is not None:
+            attention_probs = attention_probs * head_mask
+        else:
+            attention_probs = self.gate(attention_probs)
 
         reg = self.gate.get_penalty()
 
@@ -1308,6 +1311,6 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-
+        
     def get_gate_values(self):
         return self.bert.get_gate_values()
