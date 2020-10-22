@@ -299,8 +299,7 @@ class BertSelfAttentionConcrete(BertSelfAttention):
     def __init__(self, config):
         super().__init__(config)
         
-        self.gate = ConcreteGate([1,self.num_attention_heads,1,1])
-        self._apply_gates = False
+        self.gate = ConcreteGate([1,self.num_attention_heads,1,1]) 
 
     def forward(
         self,
@@ -310,6 +309,7 @@ class BertSelfAttentionConcrete(BertSelfAttention):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         output_attentions=False,
+        apply_gates=False,
     ):
         mixed_query_layer = self.query(hidden_states)
 
@@ -345,10 +345,9 @@ class BertSelfAttentionConcrete(BertSelfAttention):
         # Mask heads if we want to
         if head_mask is not None:
             attention_probs = attention_probs * head_mask
-        elif self._apply_gates:
+        elif apply_gates:
             attention_probs = self.gate(attention_probs)
-
-        reg = self.gate.get_penalty()
+            reg = self.gate.get_penalty()
 
         context_layer = torch.matmul(attention_probs, value_layer)
 
@@ -356,15 +355,14 @@ class BertSelfAttentionConcrete(BertSelfAttention):
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(*new_context_layer_shape)
 
-        outputs = (context_layer, attention_probs, reg) if output_attentions else (context_layer, reg)
+        outputs = (context_layer, attention_probs) if output_attentions else (context_layer)
+        if apply_gates:
+            outputs += (reg,)
         return outputs
     
     def get_gate_values(self):
         gate_values = self.gate.get_gates(False).flatten()
         return gate_values
-    
-    def apply_gates(self):
-        self._apply_gates = True
 
 
 class BertSelfOutput(nn.Module):
@@ -414,6 +412,7 @@ class BertAttentionConcrete(nn.Module):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         output_attentions=False,
+        apply_gates=False,
     ):
         self_outputs = self.self(
             hidden_states,
@@ -422,6 +421,7 @@ class BertAttentionConcrete(nn.Module):
             encoder_hidden_states,
             encoder_attention_mask,
             output_attentions,
+            apply_gates=apply_gates,
         )
         attention_output = self.output(self_outputs[0], hidden_states)
         outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
@@ -429,9 +429,6 @@ class BertAttentionConcrete(nn.Module):
     
     def get_gate_values(self):
         return self.self.get_gate_values()
-
-    def apply_gates(self):
-        self.self.apply_gates()
 
 
 class BertIntermediate(nn.Module):
@@ -485,12 +482,14 @@ class BertLayerConcrete(nn.Module):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         output_attentions=False,
+        apply_gates=False,
     ):
         self_attention_outputs = self.attention(
             hidden_states,
             attention_mask,
             head_mask,
             output_attentions=output_attentions,
+            apply_gates=apply_gates,
         )
         attention_output = self_attention_outputs[0]
         outputs = self_attention_outputs[1:]  # add self attentions if we output attention weights
@@ -506,6 +505,7 @@ class BertLayerConcrete(nn.Module):
                 encoder_hidden_states,
                 encoder_attention_mask,
                 output_attentions,
+                apply_gates=apply_gates,
             )
             attention_output = cross_attention_outputs[0]
             outputs = outputs + cross_attention_outputs[1:]  # add cross attentions if we output attention weights
@@ -523,9 +523,6 @@ class BertLayerConcrete(nn.Module):
     
     def get_gate_values(self):
         return self.attention.get_gate_values()
-    
-    def apply_gates(self):
-        self.attention.apply_gates()
 
 
 class BertEncoderConcrete(nn.Module):
@@ -544,10 +541,14 @@ class BertEncoderConcrete(nn.Module):
         output_attentions=False,
         output_hidden_states=False,
         return_dict=False,
+        apply_gates=False,
     ):
         all_hidden_states = () if output_hidden_states else None
         all_attentions = () if output_attentions else None
-        total_reg = 0.0
+        if apply_gates:
+            total_reg = 0.0
+        else:
+            total_reg = None
         for i, layer_module in enumerate(self.layer):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
@@ -569,6 +570,7 @@ class BertEncoderConcrete(nn.Module):
                     layer_head_mask,
                     encoder_hidden_states,
                     encoder_attention_mask,
+                    apply_gates=apply_gates,
                 )
             else:
                 layer_outputs = layer_module(
@@ -578,11 +580,13 @@ class BertEncoderConcrete(nn.Module):
                     encoder_hidden_states,
                     encoder_attention_mask,
                     output_attentions,
+                    apply_gates=apply_gates,
                 )
             hidden_states = layer_outputs[0]
             if output_attentions:
                 all_attentions = all_attentions + (layer_outputs[1],)
-            total_reg += layer_outputs[-1]
+            if apply_gates:
+                total_reg += layer_outputs[-1]
 
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
@@ -599,10 +603,6 @@ class BertEncoderConcrete(nn.Module):
         for i, layer_module in enumerate(self.layer):
             gate_values.append(layer_module.get_gate_values())
         return gate_values
-
-    def apply_gates(self):
-        for i, layer_module in enumerate(self.layer):
-            layer_module.apply_gates()
 
 class BertPooler(nn.Module):
     def __init__(self, config):
@@ -869,6 +869,7 @@ class BertModelConcrete(BertPreTrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
+        apply_gates=None,
     ):
         r"""
         encoder_hidden_states  (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`, `optional`):
@@ -936,6 +937,7 @@ class BertModelConcrete(BertPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            apply_gates=apply_gates,
         )
         sequence_output = encoder_outputs[0]
         pooled_output = self.pooler(sequence_output)
@@ -953,9 +955,6 @@ class BertModelConcrete(BertPreTrainedModel):
 
     def get_gate_values(self):
         return self.encoder.get_gate_values()
-
-    def apply_gates(self):
-        self.encoder.apply_gates()
 
 @add_start_docstrings(
     """Bert Model transformer with a sequence classification/regression head on top (a linear layer on top of
@@ -992,6 +991,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
+        apply_gates=None,
     ):
         r"""
         labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`):
@@ -1012,6 +1012,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            apply_gates=apply_gates,
         )
 
         pooled_output = outputs[1]
@@ -1029,7 +1030,8 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
                 loss_fct = CrossEntropyLoss()
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
 
-        loss += outputs[-1]
+        if apply_gates:
+            loss += outputs[-1]
 
         if not return_dict:
             output = (logits,) + outputs[2:-1]
@@ -1044,9 +1046,6 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
     
     def get_gate_values(self):
         return self.bert.get_gate_values()
-    
-    def apply_gates(self):
-        self.bert.apply_gates()
 
 
 @add_start_docstrings(
@@ -1083,6 +1082,7 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
+        apply_gates=None,
     ):
         r"""
         labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`):
@@ -1113,6 +1113,7 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            apply_gates=apply_gates,
         )
 
         pooled_output = outputs[1]
@@ -1126,7 +1127,8 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(reshaped_logits, labels)
         
-        loss += outputs[-1]
+        if apply_gates:
+            loss += outputs[-1]
 
         if not return_dict:
             output = (reshaped_logits,) + outputs[2:]
@@ -1141,9 +1143,6 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
     
     def get_gate_values(self):
         return self.bert.get_gate_values()
-
-    def apply_gates(self):
-        self.bert.apply_gates()
 
 @add_start_docstrings(
     """Bert Model with a token classification head on top (a linear layer on top of
@@ -1180,6 +1179,7 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
+        apply_gates=None,
     ):
         r"""
         labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`):
@@ -1198,6 +1198,7 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            apply_gates=apply_gates,
         )
 
         sequence_output = outputs[0]
@@ -1219,7 +1220,8 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
             else:
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
 
-        loss += outputs[-1]
+        if apply_gates:
+            loss += outputs[-1]
 
         if not return_dict:
             output = (logits,) + outputs[2:]
@@ -1234,9 +1236,6 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
 
     def get_gate_values(self):
         return self.bert.get_gate_values()
-
-    def apply_gates(self):
-        self.bert.apply_gates()
 
 @add_start_docstrings(
     """Bert Model with a span classification head on top for extractive question-answering tasks like SQuAD (a linear
@@ -1273,6 +1272,7 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
+        apply_gates=None,
     ):
         r"""
         start_positions (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`):
@@ -1296,6 +1296,7 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            apply_gates=apply_gates,
         )
 
         sequence_output = outputs[0]
@@ -1322,7 +1323,8 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
             end_loss = loss_fct(end_logits, end_positions)
             total_loss = (start_loss + end_loss) / 2
 
-        total_loss += outputs[-1]
+        if apply_gates:
+            total_loss += outputs[-1]
 
         if not return_dict:
             output = (start_logits, end_logits) + outputs[2:]
@@ -1338,6 +1340,3 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
 
     def get_gate_values(self):
         return self.bert.get_gate_values()
-
-    def apply_gates(self):
-        self.bert.apply_gates()
