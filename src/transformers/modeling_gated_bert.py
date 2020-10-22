@@ -300,6 +300,7 @@ class BertSelfAttentionConcrete(BertSelfAttention):
         super().__init__(config)
         
         self.gate = ConcreteGate([1,self.num_attention_heads,1,1])
+        self._apply_gates = False
 
     def forward(
         self,
@@ -344,7 +345,7 @@ class BertSelfAttentionConcrete(BertSelfAttention):
         # Mask heads if we want to
         if head_mask is not None:
             attention_probs = attention_probs * head_mask
-        else:
+        elif self._apply_gates:
             attention_probs = self.gate(attention_probs)
 
         reg = self.gate.get_penalty()
@@ -361,6 +362,9 @@ class BertSelfAttentionConcrete(BertSelfAttention):
     def get_gate_values(self):
         gate_values = self.gate.get_gates(False).flatten()
         return gate_values
+    
+    def apply_gates(self):
+        self._apply_gates = True
 
 
 class BertSelfOutput(nn.Module):
@@ -425,6 +429,9 @@ class BertAttentionConcrete(nn.Module):
     
     def get_gate_values(self):
         return self.self.get_gate_values()
+
+    def apply_gates(self):
+        self.self.apply_gates()
 
 
 class BertIntermediate(nn.Module):
@@ -516,6 +523,9 @@ class BertLayerConcrete(nn.Module):
     
     def get_gate_values(self):
         return self.attention.get_gate_values()
+    
+    def apply_gates(self):
+        self.attention.apply_gates()
 
 
 class BertEncoderConcrete(nn.Module):
@@ -589,6 +599,10 @@ class BertEncoderConcrete(nn.Module):
         for i, layer_module in enumerate(self.layer):
             gate_values.append(layer_module.get_gate_values())
         return gate_values
+
+    def apply_gates(self):
+        for i, layer_module in enumerate(self.layer):
+            layer_module.apply_gates()
 
 class BertPooler(nn.Module):
     def __init__(self, config):
@@ -940,6 +954,9 @@ class BertModelConcrete(BertPreTrainedModel):
     def get_gate_values(self):
         return self.encoder.get_gate_values()
 
+    def apply_gates(self):
+        self.encoder.apply_gates()
+
 @add_start_docstrings(
     """Bert Model transformer with a sequence classification/regression head on top (a linear layer on top of
     the pooled output) e.g. for GLUE tasks. """,
@@ -1027,6 +1044,9 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
     
     def get_gate_values(self):
         return self.bert.get_gate_values()
+    
+    def apply_gates(self):
+        self.bert.apply_gates()
 
 
 @add_start_docstrings(
@@ -1122,6 +1142,8 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
     def get_gate_values(self):
         return self.bert.get_gate_values()
 
+    def apply_gates(self):
+        self.bert.apply_gates()
 
 @add_start_docstrings(
     """Bert Model with a token classification head on top (a linear layer on top of
@@ -1213,6 +1235,8 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
     def get_gate_values(self):
         return self.bert.get_gate_values()
 
+    def apply_gates(self):
+        self.bert.apply_gates()
 
 @add_start_docstrings(
     """Bert Model with a span classification head on top for extractive question-answering tasks like SQuAD (a linear
@@ -1311,6 +1335,9 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-        
+
     def get_gate_values(self):
         return self.bert.get_gate_values()
+
+    def apply_gates(self):
+        self.bert.apply_gates()
