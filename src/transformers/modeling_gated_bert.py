@@ -354,6 +354,10 @@ class BertSelfAttentionConcrete(BertSelfAttention):
 
         outputs = (context_layer, attention_probs, reg) if output_attentions else (context_layer, reg)
         return outputs
+    
+    def get_gate_values(self):
+        gate_values = self.gate.get_gates(False).flatten()
+        return gate_values
 
 
 class BertSelfOutput(nn.Module):
@@ -415,6 +419,9 @@ class BertAttentionConcrete(nn.Module):
         attention_output = self.output(self_outputs[0], hidden_states)
         outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
         return outputs
+    
+    def get_gate_values(self):
+        return self.self.get_gate_values()
 
 
 class BertIntermediate(nn.Module):
@@ -503,6 +510,9 @@ class BertLayerConcrete(nn.Module):
         intermediate_output = self.intermediate(attention_output)
         layer_output = self.output(intermediate_output, attention_output)
         return layer_output
+    
+    def get_gate_values(self):
+        return self.attention.get_gate_values()
 
 
 class BertEncoderConcrete(nn.Module):
@@ -570,7 +580,12 @@ class BertEncoderConcrete(nn.Module):
             last_hidden_state=hidden_states, hidden_states=all_hidden_states, attentions=all_attentions,
             total_reg=total_reg
         )
-
+    
+    def get_gate_values(self):
+        gate_values = []
+        for i, layer_module in enumerate(self.layer):
+            gate_values.append(layer_module.get_gate_values())
+        return gate_values
 
 class BertPooler(nn.Module):
     def __init__(self, config):
@@ -919,6 +934,9 @@ class BertModelConcrete(BertPreTrainedModel):
             total_reg=encoder_outputs.total_reg,
         )
 
+    def get_gate_values(self):
+        return self.encoder.get_gate_values()
+
 @add_start_docstrings(
     """Bert Model transformer with a sequence classification/regression head on top (a linear layer on top of
     the pooled output) e.g. for GLUE tasks. """,
@@ -1003,6 +1021,9 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
+    
+    def get_gate_values(self):
+        return self.bert.get_gate_values()
 
 
 @add_start_docstrings(
@@ -1094,6 +1115,9 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
+    
+    def get_gate_values(self):
+        return self.bert.get_gate_values()
 
 
 @add_start_docstrings(
@@ -1182,6 +1206,9 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
+
+    def get_gate_values(self):
+        return self.bert.get_gate_values()
 
 
 @add_start_docstrings(
@@ -1281,3 +1308,6 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
+
+    def get_gate_values(self):
+        return self.bert.get_gate_values()
