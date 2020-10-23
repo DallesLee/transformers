@@ -64,5 +64,5 @@ class ConcreteGate(nn.Module):
 
     def get_sparsity_rate(self):
         """ Computes the fraction of gates which are now active (non-zero) """
-        is_nonzero = torch.not_equal(self.get_gates(False), 0.0)
+        is_nonzero = self.get_gates(False) == 0.0
         return torch.mean(is_nonzero.float())

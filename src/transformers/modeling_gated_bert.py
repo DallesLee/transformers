@@ -1039,9 +1039,11 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
 
         if self._apply_gates:
             loss += outputs[-1]
+            output = (logits,) + outputs[2:-1]
+        else:
+            output = (logits,) + outputs[2:]
 
         if not return_dict:
-            output = (logits,) + outputs[2:-1]
             return ((loss,) + output) if loss is not None else output
 
         return SequenceClassifierOutput(
@@ -1138,9 +1140,11 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
         
         if self._apply_gates:
             loss += outputs[-1]
+            output = (logits,) + outputs[2:-1]
+        else:
+            output = (logits,) + outputs[2:]
 
         if not return_dict:
-            output = (reshaped_logits,) + outputs[2:]
             return ((loss,) + output) if loss is not None else output
 
         return MultipleChoiceModelOutput(
@@ -1234,9 +1238,11 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
 
         if self._apply_gates:
             loss += outputs[-1]
+            output = (logits,) + outputs[2:-1]
+        else:
+            output = (logits,) + outputs[2:]
 
         if not return_dict:
-            output = (logits,) + outputs[2:]
             return ((loss,) + output) if loss is not None else output
 
         return TokenClassifierOutput(
@@ -1339,10 +1345,12 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
             total_loss = (start_loss + end_loss) / 2
 
         if self._apply_gates:
-            total_loss += outputs[-1]
+            loss += outputs[-1]
+            output = (start_logits, end_logits) + outputs[2:-1]
+        else:
+            output = (start_logits, end_logits) + outputs[2:]
 
         if not return_dict:
-            output = (start_logits, end_logits) + outputs[2:]
             return ((total_loss,) + output) if total_loss is not None else output
 
         return QuestionAnsweringModelOutput(
