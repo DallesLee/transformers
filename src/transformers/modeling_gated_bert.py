@@ -366,7 +366,7 @@ class BertSelfAttentionConcrete(BertSelfAttention):
             gate_values = self.gate.get_gates(False).flatten()
         return gate_values
     
-    def apply_gates(self, l0_penalty=1.0):
+    def apply_gates(self, l0_penalty):
         if not self._apply_gates:
             self._apply_gates = True
             self.gate = ConcreteGate([1,self.num_attention_heads,1,1], l0_penalty=l0_penalty) 
@@ -435,8 +435,8 @@ class BertAttentionConcrete(nn.Module):
     def get_gate_values(self):
         return self.self.get_gate_values()
 
-    def apply_gates(self):
-        self.self.apply_gates()
+    def apply_gates(self, l0_penalty):
+        self.self.apply_gates(l0_penalty=l0_penalty)
 
 class BertIntermediate(nn.Module):
     def __init__(self, config):
@@ -528,8 +528,8 @@ class BertLayerConcrete(nn.Module):
     def get_gate_values(self):
         return self.attention.get_gate_values()
 
-    def apply_gates(self):
-        self.attention.apply_gates()
+    def apply_gates(self, l0_penalty):
+        self.attention.apply_gates(l0_penalty=l0_penalty)
 
 class BertEncoderConcrete(nn.Module):
     def __init__(self, config):
@@ -608,10 +608,10 @@ class BertEncoderConcrete(nn.Module):
             gate_values.append(layer_module.get_gate_values())
         return gate_values
 
-    def apply_gates(self):
+    def apply_gates(self, l0_penalty):
         self._apply_gates = True
         for i, layer_module in enumerate(self.layer):
-            layer_module.apply_gates()
+            layer_module.apply_gates(l0_penalty=l0_penalty)
 
 class BertPooler(nn.Module):
     def __init__(self, config):
@@ -961,8 +961,8 @@ class BertModelConcrete(BertPreTrainedModel):
     def get_gate_values(self):
         return self.encoder.get_gate_values()
 
-    def apply_gates(self):
-        self.encoder.apply_gates()
+    def apply_gates(self, l0_penalty):
+        self.encoder.apply_gates(l0_penalty=l0_penalty)
 
 @add_start_docstrings(
     """Bert Model transformer with a sequence classification/regression head on top (a linear layer on top of
@@ -1054,9 +1054,9 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
     def get_gate_values(self):
         return self.bert.get_gate_values()
 
-    def apply_gates(self):
+    def apply_gates(self, l0_penalty=1.0):
         self._apply_gates = True
-        self.bert.apply_gates()
+        self.bert.apply_gates(l0_penalty=l0_penalty)
 
 @add_start_docstrings(
     """Bert Model with a multiple choice classification head on top (a linear layer on top of
@@ -1153,9 +1153,9 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
     def get_gate_values(self):
         return self.bert.get_gate_values()
 
-    def apply_gates(self):
+    def apply_gates(self, l0_penalty=1.0):
         self._apply_gates = True
-        self.bert.apply_gates()
+        self.bert.apply_gates(l0_penalty=l0_penalty)
 
 @add_start_docstrings(
     """Bert Model with a token classification head on top (a linear layer on top of
@@ -1249,9 +1249,9 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
     def get_gate_values(self):
         return self.bert.get_gate_values()
 
-    def apply_gates(self):
+    def apply_gates(self, l0_penalty=1.0):
         self._apply_gates = True
-        self.bert.apply_gates()
+        self.bert.apply_gates(l0_penalty=l0_penalty)
 
 @add_start_docstrings(
     """Bert Model with a span classification head on top for extractive question-answering tasks like SQuAD (a linear
@@ -1356,6 +1356,6 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
     def get_gate_values(self):
         return self.bert.get_gate_values()
 
-    def apply_gates(self):
+    def apply_gates(self, l0_penalty=1.0):
         self._apply_gates = True
-        self.bert.apply_gates()
+        self.bert.apply_gates(l0_penalty=l0_penalty)
