@@ -299,8 +299,8 @@ class BertSelfAttentionConcrete(BertSelfAttention):
     def __init__(self, config):
         super().__init__(config)
         
-        self.gate = ConcreteGate([1,self.num_attention_heads,1,1]) 
         self._apply_gates = False
+        self.gate = None
 
     def forward(
         self,
@@ -361,11 +361,15 @@ class BertSelfAttentionConcrete(BertSelfAttention):
         return outputs
     
     def get_gate_values(self):
-        gate_values = self.gate.get_gates(False).flatten()
+        gate_values = None
+        if self._apply_gates:
+            gate_values = self.gate.get_gates(False).flatten()
         return gate_values
     
-    def apply_gates(self):
-        self._apply_gates = True
+    def apply_gates(self, l0_penalty=1.0):
+        if not self._apply_gates:
+            self._apply_gates = True
+            self.gate = ConcreteGate([1,self.num_attention_heads,1,1], l0_penalty=l0_penalty) 
 
 
 class BertSelfOutput(nn.Module):
@@ -714,8 +718,6 @@ class BertPreTrainedModel(PreTrainedModel):
             module.weight.data.fill_(1.0)
         if isinstance(module, nn.Linear) and module.bias is not None:
             module.bias.data.zero_()
-        if isinstance(module, ConcreteGate):
-            nn.init.xavier_uniform_(module.log_a)
 
 
 @dataclass

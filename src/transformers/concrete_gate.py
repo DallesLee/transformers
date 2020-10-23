@@ -25,6 +25,7 @@ class ConcreteGate(nn.Module):
         self.temperature, self.stretch_limits, self.eps = temperature, stretch_limits, eps
         self.l0_penalty = l0_penalty
         self.log_a = nn.Parameter(torch.empty(shape))
+        nn.init.xavier_uniform_(self.log_a)
 
     def forward(self, values, is_train=None):
         """ applies gate to values, if is_train, adds regularizer to reg_collection """
