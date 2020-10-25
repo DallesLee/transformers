@@ -370,6 +370,9 @@ class BertSelfAttentionConcrete(BertSelfAttention):
         if not self._apply_gates:
             self._apply_gates = True
             self.gate = ConcreteGate([1,self.num_attention_heads,1,1], l0_penalty=l0_penalty) 
+    
+    def remove_gates(self):
+        self._apply_gates = False
 
 
 class BertSelfOutput(nn.Module):
@@ -437,6 +440,9 @@ class BertAttentionConcrete(nn.Module):
 
     def apply_gates(self, l0_penalty):
         self.self.apply_gates(l0_penalty=l0_penalty)
+    
+    def remove_gates(self):
+        self.self.remove_gates()
 
 class BertIntermediate(nn.Module):
     def __init__(self, config):
@@ -530,6 +536,9 @@ class BertLayerConcrete(nn.Module):
 
     def apply_gates(self, l0_penalty):
         self.attention.apply_gates(l0_penalty=l0_penalty)
+    
+    def remove_gates(self):
+        self.attention.remove_gates()
 
 class BertEncoderConcrete(nn.Module):
     def __init__(self, config):
@@ -612,6 +621,11 @@ class BertEncoderConcrete(nn.Module):
         self._apply_gates = True
         for i, layer_module in enumerate(self.layer):
             layer_module.apply_gates(l0_penalty=l0_penalty)
+    
+    def remove_gates(self):
+        self._apply_gates = False
+        for i, layer_module in enumerate(self.layer):
+            layer_module.remove_gates()
 
 class BertPooler(nn.Module):
     def __init__(self, config):
@@ -964,6 +978,9 @@ class BertModelConcrete(BertPreTrainedModel):
     def apply_gates(self, l0_penalty):
         self.encoder.apply_gates(l0_penalty=l0_penalty)
 
+    def remove_gates(self):
+        self.encoder.remove_gates()
+
 @add_start_docstrings(
     """Bert Model transformer with a sequence classification/regression head on top (a linear layer on top of
     the pooled output) e.g. for GLUE tasks. """,
@@ -1059,6 +1076,10 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
     def apply_gates(self, l0_penalty=1.0):
         self._apply_gates = True
         self.bert.apply_gates(l0_penalty=l0_penalty)
+    
+    def remove_gates(self):
+        self._apply_gates = False
+        self.bert.remove_gates()
 
 @add_start_docstrings(
     """Bert Model with a multiple choice classification head on top (a linear layer on top of
@@ -1160,6 +1181,10 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
     def apply_gates(self, l0_penalty=1.0):
         self._apply_gates = True
         self.bert.apply_gates(l0_penalty=l0_penalty)
+    
+    def remove_gates(self):
+        self._apply_gates = False
+        self.bert.remove_gates()
 
 @add_start_docstrings(
     """Bert Model with a token classification head on top (a linear layer on top of
@@ -1258,6 +1283,10 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
     def apply_gates(self, l0_penalty=1.0):
         self._apply_gates = True
         self.bert.apply_gates(l0_penalty=l0_penalty)
+    
+    def remove_gates(self):
+        self._apply_gates = False
+        self.bert.remove_gates()
 
 @add_start_docstrings(
     """Bert Model with a span classification head on top for extractive question-answering tasks like SQuAD (a linear
@@ -1367,3 +1396,7 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
     def apply_gates(self, l0_penalty=1.0):
         self._apply_gates = True
         self.bert.apply_gates(l0_penalty=l0_penalty)
+
+    def remove_gates(self):
+        self._apply_gates = False
+        self.bert.remove_gates()
