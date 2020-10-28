@@ -439,7 +439,7 @@ class BertAttentionConcrete(nn.Module):
     def remove_gates(self):
         self.self.remove_gates()
     
-    def apply_masks(self, head_mask)
+    def apply_masks(self, head_mask):
         self.self.apply_masks(head_mask)
 
 class BertIntermediate(nn.Module):
