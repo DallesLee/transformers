@@ -129,44 +129,6 @@ def main():
 
         return compute_metrics_fn
 
-    def evaluate(args, model, eval_dataloader, head_mask=None):
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
-
-        if head_mask is None:
-            head_mask = torch.ones(n_layers, n_heads).to(args.device)
-
-        # Evaluate
-        preds = None
-        label_ids = None
-        for step, inputs in enumerate(tqdm(eval_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])):
-            for k, v in inputs.items():
-                inputs[k] = v.to(args.device)
-
-            # Do a forward pass (not with torch.no_grad() since we need gradients for importance score - see below)
-            with torch.no_grad():
-                outputs = model(**inputs, head_mask=head_mask)
-                logits = outputs[1:]
-
-            labels = inputs.get("labels")
-            if labels is not None:
-                labels = labels.detach()
-            
-            if logits is not None:
-                preds = logits if preds is None else tuple(torch.cat((p, l), dim=0) for p, l in zip(preds, logits))
-            if labels is not None:
-                label_ids = labels if label_ids is None else torch.cat((label_ids, labels), dim=0)
-
-        if preds is not None:
-            preds = tuple(p.cpu().numpy() for p in preds)
-            if len(preds) == 1:
-                preds = preds[0]
-        if label_ids is not None:
-            label_ids = label_ids.cpu().numpy()
-        compute_metrics = build_compute_metrics_fn(eval_dataset.args.task_name)
-        score = compute_metrics(EvalPrediction(predictions=preds, label_ids=label_ids))
-            
-        return score
-
     # Load pretrained model and tokenizer
     #
     # Distributed training:
@@ -254,14 +216,16 @@ def main():
         gates = torch.stack(model.get_gate_values())
         head_mask = convert_gate_to_mask(gates)
         model.remove_gates()
-        score = evaluate(training_args, model, eval_dataloader, head_mask)['mnli/acc']
+        model.apply_masks(head_mask)
+        score = trainer.evaluate(eval_dataset=eval_dataset)['eval_mnli/acc']
         # print_2d_tensor(head_mask)
         logger.info("lambda: {}, remaining heads: {}, accuracy: {}".format(l0_penalty, head_mask.sum(), score * 100))
 
         for num_to_mask in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
             head_mask = convert_gate_to_mask(gates, num_to_mask)
             # print_2d_tensor(head_mask)
-            score = evaluate(training_args, model, eval_dataloader, head_mask)['mnli/acc']
+            model.apply_masks(head_mask)
+            score = trainer.evaluate(eval_dataset=eval_dataset)['eval_mnli/acc']
             sparsity = 100 - head_mask.sum() / head_mask.numel() * 100
             logger.info(
                 "Masking: current score: %f, remaining heads %d (%.1f percents)",
