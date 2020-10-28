@@ -535,7 +535,7 @@ class BertLayerConcrete(nn.Module):
     def remove_gates(self):
         self.attention.remove_gates()
 
-    def apply_masks(self, head_mask)
+    def apply_masks(self, head_mask):
         self.attention.apply_masks(head_mask)
 
 class BertEncoderConcrete(nn.Module):
@@ -620,7 +620,7 @@ class BertEncoderConcrete(nn.Module):
         for i, layer_module in enumerate(self.layer):
             layer_module.remove_gates()
     
-    def apply_masks(self, head_mask)
+    def apply_masks(self, head_mask):
         for i, layer_module in enumerate(self.layer):
             layer_head_mask = head_mask[i]
             layer_module.apply_masks(layer_head_mask)
