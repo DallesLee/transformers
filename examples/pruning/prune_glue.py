@@ -330,7 +330,7 @@ def main():
 
     # Prepare dataset for the GLUE task
     train_dataset = GlueDataset(args, tokenizer=tokenizer)
-    split = int(len(train_dataset) * 0.9)
+    split = int(len(train_dataset) * 0.99)
     train_sampler = SequentialSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(
         train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
@@ -362,17 +362,17 @@ def main():
     # head_importance = compute_heads_importance(args, model, train_dataloader)
     # head_importance = torch.Tensor(np.load(os.path.join(args.output_dir, "head_importance.npy"))).to(args.device)
     args.exact_pruning = True
-    # args.dont_normalize_importance_by_layer = True
+    args.dont_normalize_importance_by_layer = True
     # args.use_second = True
-    scores, sparsities, all_head_masks = mask_heads(
-        args, model, train_dataloader, eval_dataloader
-    )
-    logger.info("Area under curve: %.2f", auc(sparsities, scores))
+    # scores, sparsities, all_head_masks = mask_heads(
+    #     args, model, train_dataloader, eval_dataloader
+    # )
+    # logger.info("Area under curve: %.2f", auc(sparsities, scores))
     
-    scores, sparsities, all_head_masks = unmask_heads(
-        args, model, train_dataloader, eval_dataloader
-    )
-    logger.info("Area under curve: %.2f", auc(sparsities, scores))
+    # scores, sparsities, all_head_masks = unmask_heads(
+    #     args, model, train_dataloader, eval_dataloader
+    # )
+    # logger.info("Area under curve: %.2f", auc(sparsities, scores))
 
     # score, sparisity, head_mask = gibbs_sampling(
     #     args, model, train_dataloader, eval_dataloader, val_dataloader=val_dataloader, early_stop_step=24, K=2, n_groups=1
@@ -385,9 +385,13 @@ def main():
     #     score, sparisity, head_mask = gibbs_sampling(
     #         args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=1
     #     )
-    #     scores.append(score)
-    #     sparsities.append(sparisity)
-    #     all_head_masks.append(head_mask)
+    for k in range(1,12):
+        score, sparisity, head_mask = gibbs_sampling(
+            args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=1, annealing=True
+        )
+        # scores.append(score)
+        # sparsities.append(sparisity)
+        # all_head_masks.append(head_mask)
     # save_results(args, scores, sparsities, all_head_masks, "markov_small")
 
     # scores = []

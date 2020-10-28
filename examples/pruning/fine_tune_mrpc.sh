@@ -12,9 +12,9 @@ python ../text-classification/run_glue.py \
 	--do_eval \
 	--data_dir data/$dataset/ \
 	--max_seq_length 128 \
-	--per_gpu_train_batch_size 32 \
+	--per_device_train_batch_size 32 \
 	--learning_rate 2e-5 \
-	--num_train_epochs 3.0 \
-	--output_dir output/$dataset/ \
+	--num_train_epochs 6.0 \
+	--output_dir output/$dataset/6 \
 	--cache_dir cache/$dataset/ \
 	--save_steps 10000 \

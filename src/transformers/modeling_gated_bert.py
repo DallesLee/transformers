@@ -246,7 +246,6 @@ class BertSelfAttention(nn.Module):
         self,
         hidden_states,
         attention_mask=None,
-        head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         output_attentions=False,
@@ -281,10 +280,6 @@ class BertSelfAttention(nn.Module):
         # This is actually dropping out entire tokens to attend to, which might
         # seem a bit unusual, but is taken from the original Transformer paper.
         attention_probs = self.dropout(attention_probs)
-
-        # Mask heads if we want to
-        if head_mask is not None:
-            attention_probs = attention_probs * head_mask
 
         context_layer = torch.matmul(attention_probs, value_layer)
 
@@ -301,12 +296,12 @@ class BertSelfAttentionConcrete(BertSelfAttention):
         
         self._apply_gates = False
         self.gate = None
+        self.head_mask = None
 
     def forward(
         self,
         hidden_states,
         attention_mask=None,
-        head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         output_attentions=False,
@@ -343,8 +338,8 @@ class BertSelfAttentionConcrete(BertSelfAttention):
         attention_probs = self.dropout(attention_probs)
 
         # Mask heads if we want to
-        if head_mask is not None:
-            attention_probs = attention_probs * head_mask
+        if self.head_mask is not None:
+            attention_probs = attention_probs * self.head_mask
         elif self._apply_gates:
             attention_probs = self.gate(attention_probs)
             reg = self.gate.get_penalty()
@@ -374,6 +369,8 @@ class BertSelfAttentionConcrete(BertSelfAttention):
     def remove_gates(self):
         self._apply_gates = False
 
+    def apply_masks(self, head_mask):
+        self.head_mask = head_mask
 
 class BertSelfOutput(nn.Module):
     def __init__(self, config):
@@ -418,7 +415,6 @@ class BertAttentionConcrete(nn.Module):
         self,
         hidden_states,
         attention_mask=None,
-        head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         output_attentions=False,
@@ -426,7 +422,6 @@ class BertAttentionConcrete(nn.Module):
         self_outputs = self.self(
             hidden_states,
             attention_mask,
-            head_mask,
             encoder_hidden_states,
             encoder_attention_mask,
             output_attentions,
@@ -443,6 +438,9 @@ class BertAttentionConcrete(nn.Module):
     
     def remove_gates(self):
         self.self.remove_gates()
+    
+    def apply_masks(self, head_mask)
+        self.self.apply_masks(head_mask)
 
 class BertIntermediate(nn.Module):
     def __init__(self, config):
@@ -491,7 +489,6 @@ class BertLayerConcrete(nn.Module):
         self,
         hidden_states,
         attention_mask=None,
-        head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         output_attentions=False,
@@ -499,7 +496,6 @@ class BertLayerConcrete(nn.Module):
         self_attention_outputs = self.attention(
             hidden_states,
             attention_mask,
-            head_mask,
             output_attentions=output_attentions,
         )
         attention_output = self_attention_outputs[0]
@@ -512,7 +508,6 @@ class BertLayerConcrete(nn.Module):
             cross_attention_outputs = self.crossattention(
                 attention_output,
                 attention_mask,
-                head_mask,
                 encoder_hidden_states,
                 encoder_attention_mask,
                 output_attentions,
@@ -540,6 +535,9 @@ class BertLayerConcrete(nn.Module):
     def remove_gates(self):
         self.attention.remove_gates()
 
+    def apply_masks(self, head_mask)
+        self.attention.apply_masks(head_mask)
+
 class BertEncoderConcrete(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -551,7 +549,6 @@ class BertEncoderConcrete(nn.Module):
         self,
         hidden_states,
         attention_mask=None,
-        head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         output_attentions=False,
@@ -568,8 +565,6 @@ class BertEncoderConcrete(nn.Module):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            layer_head_mask = head_mask[i] if head_mask is not None else None
-
             if getattr(self.config, "gradient_checkpointing", False):
 
                 def create_custom_forward(module):
@@ -582,7 +577,6 @@ class BertEncoderConcrete(nn.Module):
                     create_custom_forward(layer_module),
                     hidden_states,
                     attention_mask,
-                    layer_head_mask,
                     encoder_hidden_states,
                     encoder_attention_mask,
                 )
@@ -590,7 +584,6 @@ class BertEncoderConcrete(nn.Module):
                 layer_outputs = layer_module(
                     hidden_states,
                     attention_mask,
-                    layer_head_mask,
                     encoder_hidden_states,
                     encoder_attention_mask,
                     output_attentions,
@@ -626,6 +619,11 @@ class BertEncoderConcrete(nn.Module):
         self._apply_gates = False
         for i, layer_module in enumerate(self.layer):
             layer_module.remove_gates()
+    
+    def apply_masks(self, head_mask)
+        for i, layer_module in enumerate(self.layer):
+            layer_head_mask = head_mask[i]
+            layer_module.apply_masks(layer_head_mask)
 
 class BertPooler(nn.Module):
     def __init__(self, config):
@@ -883,7 +881,6 @@ class BertModelConcrete(BertPreTrainedModel):
         attention_mask=None,
         token_type_ids=None,
         position_ids=None,
-        head_mask=None,
         inputs_embeds=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
@@ -938,20 +935,12 @@ class BertModelConcrete(BertPreTrainedModel):
         else:
             encoder_extended_attention_mask = None
 
-        # Prepare head mask if needed
-        # 1.0 in head_mask indicate we keep the head
-        # attention_probs has shape bsz x n_heads x N x N
-        # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
-        # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
-        head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
-
         embedding_output = self.embeddings(
             input_ids=input_ids, position_ids=position_ids, token_type_ids=token_type_ids, inputs_embeds=inputs_embeds
         )
         encoder_outputs = self.encoder(
             embedding_output,
             attention_mask=extended_attention_mask,
-            head_mask=head_mask,
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_extended_attention_mask,
             output_attentions=output_attentions,
@@ -980,6 +969,10 @@ class BertModelConcrete(BertPreTrainedModel):
 
     def remove_gates(self):
         self.encoder.remove_gates()
+    
+    def apply_masks(self, head_mask):
+        head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
+        self.encoder.apply_masks(head_mask)
 
 @add_start_docstrings(
     """Bert Model transformer with a sequence classification/regression head on top (a linear layer on top of
@@ -1011,7 +1004,6 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         attention_mask=None,
         token_type_ids=None,
         position_ids=None,
-        head_mask=None,
         inputs_embeds=None,
         labels=None,
         output_attentions=None,
@@ -1032,7 +1024,6 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
-            head_mask=head_mask,
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
@@ -1081,6 +1072,9 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         self._apply_gates = False
         self.bert.remove_gates()
 
+    def apply_masks(self, head_mask):
+        self.bert.apply_masks(head_mask)
+
 @add_start_docstrings(
     """Bert Model with a multiple choice classification head on top (a linear layer on top of
     the pooled output and a softmax) e.g. for RocStories/SWAG tasks. """,
@@ -1110,7 +1104,6 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
         attention_mask=None,
         token_type_ids=None,
         position_ids=None,
-        head_mask=None,
         inputs_embeds=None,
         labels=None,
         output_attentions=None,
@@ -1141,7 +1134,6 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
-            head_mask=head_mask,
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
@@ -1185,6 +1177,9 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
     def remove_gates(self):
         self._apply_gates = False
         self.bert.remove_gates()
+    
+    def apply_masks(self, head_mask):
+        self.bert.apply_masks(head_mask)
 
 @add_start_docstrings(
     """Bert Model with a token classification head on top (a linear layer on top of
@@ -1216,7 +1211,6 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
         attention_mask=None,
         token_type_ids=None,
         position_ids=None,
-        head_mask=None,
         inputs_embeds=None,
         labels=None,
         output_attentions=None,
@@ -1235,7 +1229,6 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
-            head_mask=head_mask,
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
@@ -1287,6 +1280,9 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
     def remove_gates(self):
         self._apply_gates = False
         self.bert.remove_gates()
+    
+    def apply_masks(self, head_mask):
+        self.bert.apply_masks(head_mask)
 
 @add_start_docstrings(
     """Bert Model with a span classification head on top for extractive question-answering tasks like SQuAD (a linear
@@ -1317,7 +1313,6 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
         attention_mask=None,
         token_type_ids=None,
         position_ids=None,
-        head_mask=None,
         inputs_embeds=None,
         start_positions=None,
         end_positions=None,
@@ -1342,7 +1337,6 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
-            head_mask=head_mask,
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
@@ -1400,3 +1394,6 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
     def remove_gates(self):
         self._apply_gates = False
         self.bert.remove_gates()
+    
+    def apply_masks(self, head_mask):
+        self.bert.apply_masks(head_mask)
