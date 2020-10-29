@@ -155,10 +155,6 @@ def main():
         if training_args.do_eval
         else None
     )
-    eval_sampler = SequentialSampler(eval_dataset)
-    eval_dataloader = DataLoader(
-        eval_dataset, sampler=eval_sampler, batch_size=training_args.eval_batch_size, collate_fn=default_data_collator
-    )
 
     for l0_penalty in [0.01, 0.005, 0.002, 0.001, 0.0005]:
         torch.manual_seed(0)
@@ -169,21 +165,21 @@ def main():
 
         model.apply_gates(l0_penalty)
 
-        optimizer_grouped_parameters = [
-            {
-                "params": [p for n, p in model.named_parameters() if not "log_a" in n],
-                "lr": training_args.learning_rate,
-            },
-            {
-                "params": [p for n, p in model.named_parameters() if "log_a" in n],
-                "lr": 1e-1,
-            },
-        ]
-        optimizer = AdamW(
-            optimizer_grouped_parameters,
-            betas=(0.9, 0.999),
-            eps=1e-8,
-        )
+        # optimizer_grouped_parameters = [
+        #     {
+        #         "params": [p for n, p in model.named_parameters() if not "log_a" in n],
+        #         "lr": training_args.learning_rate,
+        #     },
+        #     {
+        #         "params": [p for n, p in model.named_parameters() if "log_a" in n],
+        #         "lr": 1e-1,
+        #     },
+        # ]
+        # optimizer = AdamW(
+        #     optimizer_grouped_parameters,
+        #     betas=(0.9, 0.999),
+        #     eps=1e-8,
+        # )
 
         # Initialize our Trainer
         training_args.max_steps = -1
@@ -193,7 +189,7 @@ def main():
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             compute_metrics=build_compute_metrics_fn(data_args.task_name),
-            optimizers=(optimizer, None)
+            # optimizers=(optimizer, None)
         )
 
         # Training
