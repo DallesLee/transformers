@@ -988,7 +988,6 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         self._apply_gates = False
-        self.head_mask = None
 
         self.init_weights()
 
@@ -1074,9 +1073,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         self.bert.remove_gates()
 
     def apply_masks(self, head_mask):
-        head_mask = nn.Parameter(head_mask)
-        self.head_mask = head_mask
-        self.bert.apply_masks(self.head_mask)
+        self.bert.apply_masks(head_mask)
 
 @add_start_docstrings(
     """Bert Model with a multiple choice classification head on top (a linear layer on top of
