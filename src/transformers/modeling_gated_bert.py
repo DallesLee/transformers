@@ -1075,6 +1075,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         self.bert.remove_gates()
 
     def apply_masks(self, head_mask):
+        head_mask = nn.Parameter(head_mask)
         self.bert.apply_masks(head_mask)
 
 @add_start_docstrings(
