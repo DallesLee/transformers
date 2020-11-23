@@ -372,6 +372,12 @@ class BertSelfAttentionConcrete(BertSelfAttention):
     def apply_masks(self, head_mask):
         self.head_mask = head_mask
 
+    def get_masks(self):
+        masks = None
+        if self.head_mask is not None:
+            masks = self.head_mask.flatten()
+        return masks    
+
 class BertSelfOutput(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -441,6 +447,9 @@ class BertAttentionConcrete(nn.Module):
     
     def apply_masks(self, head_mask):
         self.self.apply_masks(head_mask)
+    
+    def get_masks(self):
+        return self.self.get_masks()
 
 class BertIntermediate(nn.Module):
     def __init__(self, config):
@@ -537,6 +546,9 @@ class BertLayerConcrete(nn.Module):
 
     def apply_masks(self, head_mask):
         self.attention.apply_masks(head_mask)
+    
+    def get_masks(self):
+        return self.attention.get_masks()
 
 class BertEncoderConcrete(nn.Module):
     def __init__(self, config):
@@ -625,6 +637,12 @@ class BertEncoderConcrete(nn.Module):
         for i, layer_module in enumerate(self.layer):
             layer_head_mask = head_mask[i]
             layer_module.apply_masks(layer_head_mask)
+    
+    def get_masks(self):
+        masks = []
+        for i, layer_module in enumerate(self.layer):
+            masks.append(layer_module.get_masks())
+        return masks
 
 class BertPooler(nn.Module):
     def __init__(self, config):
@@ -975,6 +993,9 @@ class BertModelConcrete(BertPreTrainedModel):
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
         self.encoder.apply_masks(head_mask)
 
+    def get_masks(self):
+        return self.encoder.get_masks()
+
 @add_start_docstrings(
     """Bert Model transformer with a sequence classification/regression head on top (a linear layer on top of
     the pooled output) e.g. for GLUE tasks. """,
@@ -1076,6 +1097,9 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
     def apply_masks(self, head_mask):
         self._apply_gates = False
         self.bert.apply_masks(head_mask)
+
+    def get_masks(self):
+        return self.bert.get_masks()
 
 @add_start_docstrings(
     """Bert Model with a multiple choice classification head on top (a linear layer on top of
@@ -1184,6 +1208,9 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
         self._apply_gates = False
         self.bert.apply_masks(head_mask)
 
+    def get_masks(self):
+        return self.bert.get_masks()
+
 @add_start_docstrings(
     """Bert Model with a token classification head on top (a linear layer on top of
     the hidden-states output) e.g. for Named-Entity-Recognition (NER) tasks. """,
@@ -1287,6 +1314,9 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
     def apply_masks(self, head_mask):
         self._apply_gates = False
         self.bert.apply_masks(head_mask)
+
+    def get_masks(self):
+        return self.bert.get_masks()
 
 @add_start_docstrings(
     """Bert Model with a span classification head on top for extractive question-answering tasks like SQuAD (a linear
@@ -1402,3 +1432,6 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
     def apply_masks(self, head_mask):
         self._apply_gates = False
         self.bert.apply_masks(head_mask)
+    
+    def get_masks(self):
+        return self.bert.get_masks()

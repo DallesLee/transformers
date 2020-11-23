@@ -1,5 +1,6 @@
-#!/usr/bin/env python3
-# Copyright 2018 CMU and The HuggingFace Inc. team.
+# coding=utf-8
+# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
+# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,188 +13,122 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Bertology: this script shows how you can explore the internals of the models in the library to:
-    - compute the importance of each head
-    - prune (remove) the low importance head.
-    Some parts of this script are adapted from the code of Michel et al. (http://arxiv.org/abs/1905.10650)
-    which is available at https://github.com/pmichel31415/are-16-heads-really-better-than-1
-"""
-import argparse
+""" Finetuning the library models for sequence classification on GLUE."""
+
+
+import dataclasses
 import logging
 import os
-from datetime import datetime
-import re
-
-import matplotlib.pylab as plt
-from sklearn.metrics import auc
-from mlxtend.evaluate import permutation_test
-import random
-import sampling_utils
+import sys
+from dataclasses import dataclass, field
+from typing import Callable, Dict, Optional
 
 import numpy as np
 import torch
-from torch.utils.data.distributed import DistributedSampler
-from tqdm import tqdm
 
-from pruning_utils import *
-
+from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, EvalPrediction, GlueDataset
+from transformers import GlueDataTrainingArguments as DataTrainingArguments
 from transformers import (
-    AutoConfig,
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    default_data_collator,
-    GlueDataset,
+    HfArgumentParser,
+    Trainer,
+    DropoutTrainer,
+    TrainingArguments,
     glue_compute_metrics,
     glue_output_modes,
-    glue_processors,
+    glue_tasks_num_labels,
     set_seed,
-    AdamW,
     BertForSequenceClassificationConcrete,
+    BertForSequenceClassification,
+    AdamW,
+    default_data_collator
 )
+from torch.utils.data import DataLoader, SequentialSampler, Subset
+from tqdm import tqdm
+from pruning_utils import print_2d_tensor
 
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class ModelArguments:
+    """
+    Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
+    """
+
+    model_name_or_path: str = field(
+        metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
+    )
+    config_name: Optional[str] = field(
+        default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
+    )
+    tokenizer_name: Optional[str] = field(
+        default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
+    )
+    cache_dir: Optional[str] = field(
+        default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
+    )
+
 def main():
-    parser = argparse.ArgumentParser()
-    # Required parameters
-    parser.add_argument(
-        "--data_dir",
-        default=None,
-        type=str,
-        required=True,
-        help="The input data dir. Should contain the .tsv files (or other data files) for the task.",
-    )
-    parser.add_argument(
-        "--model_name_or_path",
-        default=None,
-        type=str,
-        required=True,
-        help="Path to pretrained model or model identifier from huggingface.co/models",
-    )
-    parser.add_argument(
-        "--task_name",
-        default=None,
-        type=str,
-        required=True,
-        help="The name of the task to train selected in the list: " + ", ".join(glue_processors.keys()),
-    )
-    parser.add_argument(
-        "--output_dir",
-        default=None,
-        type=str,
-        required=True,
-        help="The output directory where the model predictions and checkpoints will be written.",
-    )
+    # See all possible arguments in src/transformers/training_args.py
+    # or by passing the --help flag to this script.
+    # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    # Other parameters
-    parser.add_argument(
-        "--config_name",
-        default="",
-        type=str,
-        help="Pretrained config name or path if not the same as model_name_or_path",
-    )
-    parser.add_argument(
-        "--tokenizer_name",
-        default="",
-        type=str,
-        help="Pretrained tokenizer name or path if not the same as model_name_or_path",
-    )
-    parser.add_argument(
-        "--cache_dir",
-        default=None,
-        type=str,
-        help="Where do you want to store the pre-trained models downloaded from s3",
-    )
-    parser.add_argument(
-        "--data_subset", type=int, default=-1, help="If > 0: limit the data to a subset of data_subset instances."
-    )
-    parser.add_argument(
-        "--overwrite_output_dir", action="store_true", help="Whether to overwrite data in output directory"
-    )
-    parser.add_argument(
-        "--overwrite_cache", action="store_true", help="Overwrite the cached training and evaluation sets"
-    )
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 
-    parser.add_argument(
-        "--exact_pruning", action="store_true", help="Compute head importance for each step"
-    )
-    parser.add_argument(
-        "--dont_normalize_importance_by_layer", action="store_true", help="Don't normalize importance score by layers"
-    )
-    parser.add_argument(
-        "--dont_normalize_global_importance",
-        action="store_true",
-        help="Don't normalize all importance scores between 0 and 1",
-    )
-    parser.add_argument(
-        "--dont_use_abs", action="store_true", help="Don't apply abs on first order derivative"
-    )
-    parser.add_argument(
-        "--use_squared", action="store_true", help="Use squared derivative as quality"
-    )
-    parser.add_argument(
-        "--use_second", action="store_true", help="Use second order derivative as quality"
-    )
-    parser.add_argument(
-        "--use_contexts", action="store_true", help="Use context vectors instead of attentions weights"
-    )
-
-    parser.add_argument(
-        "--masking_amount", default=0.1, type=float, help="Amount to heads to masking at each masking step."
-    )
-    parser.add_argument("--metric_name", default="acc", type=str, help="Metric to use for head masking.")
-
-    parser.add_argument(
-        "--max_seq_length",
-        default=128,
-        type=int,
-        help="The maximum total input sequence length after WordPiece tokenization. \n"
-        "Sequences longer than this will be truncated, sequences shorter padded.",
-    )
-    parser.add_argument("--batch_size", default=32, type=int, help="Batch size.")
-
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--local_rank", type=int, default=-1, help="local_rank for distributed training on gpus")
-    parser.add_argument("--no_cuda", action="store_true", help="Whether not to use CUDA when available")
-    parser.add_argument("--server_ip", type=str, default="", help="Can be used for distant debugging.")
-    parser.add_argument("--server_port", type=str, default="", help="Can be used for distant debugging.")
-    args = parser.parse_args()
-
-    if args.server_ip and args.server_port:
-        # Distant debugging - see https://code.visualstudio.com/docs/python/debugging#_attach-to-a-local-script
-        import ptvsd
-
-        print("Waiting for debugger attach")
-        ptvsd.enable_attach(address=(args.server_ip, args.server_port), redirect_output=True)
-        ptvsd.wait_for_attach()
-
-    # Setup devices and distributed training
-    if args.local_rank == -1 or args.no_cuda:
-        args.device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
-        args.n_gpu = 0 if args.no_cuda else torch.cuda.device_count()
+    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
+        # If we pass only one argument to the script and it's the path to a json file,
+        # let's parse it to get our arguments.
+        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
-        torch.cuda.set_device(args.local_rank)
-        args.device = torch.device("cuda", args.local_rank)
-        args.n_gpu = 1
-        torch.distributed.init_process_group(backend="nccl")  # Initializes the distributed backend
+        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     # Setup logging
-    logging.basicConfig(level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
-    logger.info("device: {} n_gpu: {}, distributed: {}".format(args.device, args.n_gpu, bool(args.local_rank != -1)))
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO if training_args.local_rank in [-1, 0] else logging.WARN,
+    )
+    logger.warning(
+        "Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",
+        training_args.local_rank,
+        training_args.device,
+        training_args.n_gpu,
+        bool(training_args.local_rank != -1),
+        training_args.fp16,
+    )
+    logger.info("Training/evaluation parameters %s", training_args)
 
-    # Set seeds
-    set_seed(args.seed)
+    # Set seed
+    set_seed(training_args.seed)
 
-    # Prepare GLUE task
-    args.task_name = args.task_name.lower()
-    if args.task_name not in glue_processors:
-        raise ValueError("Task not found: %s" % (args.task_name))
-    processor = glue_processors[args.task_name]()
-    args.output_mode = glue_output_modes[args.task_name]
-    label_list = processor.get_labels()
-    num_labels = len(label_list)
+    try:
+        num_labels = glue_tasks_num_labels[data_args.task_name]
+        output_mode = glue_output_modes[data_args.task_name]
+    except KeyError:
+        raise ValueError("Task not found: %s" % (data_args.task_name))
+
+    def convert_gate_to_mask(gates, num_to_mask=None):
+        if num_to_mask is not None:
+            head_mask = torch.ones_like(gates)
+            current_heads_to_mask = gates.view(-1).sort()[1]
+            current_heads_to_mask = current_heads_to_mask[:num_to_mask]
+            head_mask = head_mask.view(-1)
+            head_mask[current_heads_to_mask] = 0.0
+            head_mask = head_mask.view_as(gates)
+        else:
+            head_mask = (gates > 0.5).float()
+        return head_mask
+
+    def build_compute_metrics_fn(task_name: str) -> Callable[[EvalPrediction], Dict]:
+        def compute_metrics_fn(p: EvalPrediction):
+            if output_mode == "classification":
+                preds = np.argmax(p.predictions, axis=1)
+            elif output_mode == "regression":
+                preds = np.squeeze(p.predictions)
+            return glue_compute_metrics(task_name, preds, p.label_ids)
+
+        return compute_metrics_fn
 
     # Load pretrained model and tokenizer
     #
@@ -202,37 +137,75 @@ def main():
     # download model & vocab.
 
     config = AutoConfig.from_pretrained(
-        args.config_name if args.config_name else args.model_name_or_path,
+        model_args.config_name if model_args.config_name else model_args.model_name_or_path,
         num_labels=num_labels,
-        finetuning_task=args.task_name,
-        cache_dir=args.cache_dir,
+        finetuning_task=data_args.task_name,
+        cache_dir=model_args.cache_dir,
     )
     tokenizer = AutoTokenizer.from_pretrained(
-        args.tokenizer_name if args.tokenizer_name else args.model_name_or_path, cache_dir=args.cache_dir,
+        model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+        cache_dir=model_args.cache_dir,
     )
 
-    # Print/save training arguments
-    os.makedirs(args.output_dir, exist_ok=True)
-    torch.save(args, os.path.join(args.output_dir, "run_args.bin"))
-    logger.info("Training/evaluation parameters %s", args)
+    # Get datasets
+    train_dataset = (
+        GlueDataset(data_args, tokenizer=tokenizer, cache_dir=model_args.cache_dir) if training_args.do_train else None
+    )
+    eval_dataset = (
+        GlueDataset(data_args, tokenizer=tokenizer, mode="dev", cache_dir=model_args.cache_dir)
+        if training_args.do_eval
+        else None
+    )
 
-    # Prepare dataset for the GLUE task
-    train_dataset = GlueDataset(args, tokenizer=tokenizer)
-    eval_dataset = GlueDataset(args, tokenizer=tokenizer, mode="dev")
-    for k in range(12):
-        num_to_mask = (12-k) * 12
-
+    for num_to_mask in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
+        torch.manual_seed(42)
         model = BertForSequenceClassificationConcrete.from_pretrained(
-            args.model_name_or_path,
-            from_tf=bool(".ckpt" in args.model_name_or_path),
+            model_args.model_name_or_path,
             config=config,
-            cache_dir=args.cache_dir,
         )
-        model.to(args.device)
-        model.eval()
-        
-        scores = dropout_train(args, model, train_dataset, eval_dataset, num_to_mask=num_to_mask, epoch=4)
-        logger.info("K: {}, scores: {}".format(k, str(scores)))
+
+        model.apply_gates()
+
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in model.named_parameters() if not "log_a" in n],
+                "lr": training_args.learning_rate,
+            },
+            {
+                "params": [p for n, p in model.named_parameters() if "log_a" in n],
+                "lr": 1e-1,
+            },
+        ]
+        optimizer = AdamW(
+            optimizer_grouped_parameters,
+            betas=(0.9, 0.999),
+            eps=1e-8,
+        )
+
+        # Initialize our Trainer
+        training_args.max_steps = -1
+        trainer = DropoutTrainer(
+            model=model,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            compute_metrics=build_compute_metrics_fn(data_args.task_name),
+            optimizers=(optimizer, None)
+        )
+
+        # Training
+        trainer.train()
+        trainer.save_model()
+
+        score = trainer.evaluate(eval_dataset=eval_dataset)['eval_acc']
+        # print_2d_tensor(head_mask)
+        logger.info("remaining heads: {}, accuracy: {}".format(144-num_to_mask, score * 100))
+    
+
+
+def _mp_fn(index):
+    # For xla_spawn (TPUs)
+    main()
 
 
 if __name__ == "__main__":
