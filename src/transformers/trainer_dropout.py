@@ -120,7 +120,7 @@ class DropoutTrainer(Trainer):
         )
         self.num_to_mask = num_to_mask
 
-    def convert_gate_to_mask(gates, num_to_mask=None):
+    def convert_gate_to_mask(self, gates, num_to_mask=None):
         if num_to_mask is not None:
             head_mask = torch.ones_like(gates)
             current_heads_to_mask = gates.view(-1).sort()[1]
@@ -158,8 +158,6 @@ class DropoutTrainer(Trainer):
             return self._training_step(model, inputs, self.optimizer)
         
         gates = torch.stack(model.get_gate_values())
-        print(gates)
-        print(self.num_to_mask)
         head_mask = self.convert_gate_to_mask(gates, self.num_to_mask)
         model.apply_masks(head_mask)
 
