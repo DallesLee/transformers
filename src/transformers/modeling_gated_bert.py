@@ -351,7 +351,7 @@ class BertSelfAttentionConcrete(BertSelfAttention):
         context_layer = context_layer.view(*new_context_layer_shape)
 
         outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
-        if self.head_mask is not None and self._apply_gates:
+        if self.head_mask is None and self._apply_gates:
             outputs += (reg,)
         return outputs
     
