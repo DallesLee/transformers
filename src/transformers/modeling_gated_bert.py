@@ -351,13 +351,13 @@ class BertSelfAttentionConcrete(BertSelfAttention):
         context_layer = context_layer.view(*new_context_layer_shape)
 
         outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
-        if self._apply_gates:
+        if self.head_mask is not None and self._apply_gates:
             outputs += (reg,)
         return outputs
     
     def get_gate_values(self):
         gate_values = None
-        if self._apply_gates:
+        if self.gate is not None:
             gate_values = self.gate.get_gates(False).flatten()
         return gate_values
     
@@ -621,6 +621,7 @@ class BertEncoderConcrete(nn.Module):
             layer_module.remove_gates()
     
     def apply_masks(self, head_mask):
+        self._apply_gates = False
         for i, layer_module in enumerate(self.layer):
             layer_head_mask = head_mask[i]
             layer_module.apply_masks(layer_head_mask)
@@ -1073,6 +1074,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         self.bert.remove_gates()
 
     def apply_masks(self, head_mask):
+        self._apply_gates = False
         self.bert.apply_masks(head_mask)
 
 @add_start_docstrings(
@@ -1179,6 +1181,7 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
         self.bert.remove_gates()
     
     def apply_masks(self, head_mask):
+        self._apply_gates = False
         self.bert.apply_masks(head_mask)
 
 @add_start_docstrings(
@@ -1282,6 +1285,7 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
         self.bert.remove_gates()
     
     def apply_masks(self, head_mask):
+        self._apply_gates = False
         self.bert.apply_masks(head_mask)
 
 @add_start_docstrings(
@@ -1396,4 +1400,5 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
         self.bert.remove_gates()
     
     def apply_masks(self, head_mask):
+        self._apply_gates = False
         self.bert.apply_masks(head_mask)
