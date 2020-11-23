@@ -13,6 +13,19 @@ from tqdm import tqdm
 from transformers import glue_compute_metrics, EvalPrediction
 from typing import Dict, List, Tuple
 from seqeval.metrics import f1_score, precision_score, recall_score
+from torch.utils.data import DataLoader, SequentialSampler, Subset
+from torch.utils.data.distributed import DistributedSampler
+
+from typing import Callable, Dict, Optional
+
+from transformers import (
+    glue_compute_metrics,
+    glue_output_modes,
+    Trainer,
+    HfArgumentParser,
+    TrainingArguments,
+    default_data_collator
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,15 +53,86 @@ def compute_metrics(p: EvalPrediction, label_map) -> Dict:
         "f1": f1_score(out_label_list, preds_list),
     }
 
+def build_compute_metrics_fn(task_name: str) -> Callable[[EvalPrediction], Dict]:
+    output_mode = glue_output_modes[task_name]
+    def compute_metrics_fn(p: EvalPrediction):
+        if output_mode == "classification":
+            preds = np.argmax(p.predictions, axis=1)
+        elif output_mode == "regression":
+            preds = np.squeeze(p.predictions)
+        return glue_compute_metrics(task_name, preds, p.label_ids)
+
+    return compute_metrics_fn
+
+def train(args, model, head_mask, train_dataset, eval_dataset, epoch=1.0):
+    training_parser = HfArgumentParser((TrainingArguments))
+    str_args = "--output_dir {} --learning_rate 2e-5 --per_device_train_batch_size 32\
+     --do_train --do_eval --num_train_epochs {}".format(args.output_dir + "/" + str(head_mask.sum().cpu().numpy()), epoch)
+    training_args = training_parser.parse_args_into_dataclasses(str_args.split())[0]
+    model.train()
+    model.apply_masks(head_mask)
+    model.config.output_attentions = False
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        compute_metrics=build_compute_metrics_fn(eval_dataset.args.task_name),
+    )
+    trainer.train()
+    score = trainer.evaluate(eval_dataset=eval_dataset)['eval_acc']
+    logger.info("Accuracy: {}".format(score))
+    return score
+
+def dropout_train(args, model, train_dataset, eval_dataset, num_to_mask=36, epoch=3):
+    training_parser = HfArgumentParser((TrainingArguments))
+    str_args = "--output_dir output/ --learning_rate 2e-5 --per_device_train_batch_size 32\
+     --do_train --do_eval --num_train_epochs 1.0"
+    training_args = training_parser.parse_args_into_dataclasses(str_args.split())[0]
+
+    train_sampler = SequentialSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
+    train_dataloader = DataLoader(
+        train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
+    )
+
+    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    head_mask = torch.ones(n_layers, n_heads).to(args.device)
+
+    scores = []
+
+    for i in range(epoch):
+        model.eval()
+        head_importance, _ = compute_heads_importance(args, model, train_dataloader, head_mask)
+        current_heads_to_mask = head_importance.view(-1).sort()[1]
+        current_heads_to_mask = current_heads_to_mask[:num_to_mask]
+        logger.info("Heads to mask: %s", str(current_heads_to_mask.tolist()))
+        head_mask = torch.ones(n_layers, n_heads).to(args.device)
+        head_mask = head_mask.view(-1)
+        head_mask[current_heads_to_mask] = 0.0
+        head_mask = head_mask.view_as(head_importance)
+
+        training_args.max_steps = -1
+        model.train()
+        model.apply_masks(head_mask)
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            compute_metrics=build_compute_metrics_fn(eval_dataset.args.task_name),
+        )
+        trainer.train()
+        scores.append(trainer.evaluate(eval_dataset=eval_dataset)['eval_acc'])
+    
+    return scores
+
 def evaluate(args, model, eval_dataloader, head_mask=None):
-    if args.n_gpu > 1:
-        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
-    else:
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     if head_mask is None:
         head_mask = torch.ones(n_layers, n_heads).to(args.device)
 
+    model.apply_masks(head_mask)
     # Evaluate
     preds = None
     labels = None
@@ -57,7 +141,7 @@ def evaluate(args, model, eval_dataloader, head_mask=None):
             inputs[k] = v.to(args.device)
 
         # Do a forward pass (not with torch.no_grad() since we need gradients for importance score - see below)
-        outputs = model(**inputs, head_mask=head_mask)
+        outputs = model(**inputs)
         loss, logits, all_attentions = (
             outputs[0],
             outputs[1],
@@ -87,10 +171,7 @@ def compute_heads_importance(
         - head importance scores according to http://arxiv.org/abs/1905.10650
     """
     # Prepare our tensors
-    if args.n_gpu > 1:
-        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
-    else:
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
     head_importance = torch.zeros(n_layers, n_heads).to(args.device)
 
     if head_mask is None:
@@ -99,6 +180,7 @@ def compute_heads_importance(
         else:
             head_mask = torch.ones(n_layers, n_heads).to(args.device)
     head_mask.requires_grad_(requires_grad=True)
+    model.apply_masks(head_mask)
     
     tot_tokens = 0.0
     preds = None
@@ -108,7 +190,7 @@ def compute_heads_importance(
             inputs[k] = v.to(args.device)
 
         # Do a forward pass (not with torch.no_grad() since we need gradients for importance score - see below)
-        outputs = model(**inputs, head_mask=head_mask)
+        outputs = model(**inputs)
         loss, logits, all_attentions = (
             outputs[0],
             outputs[1],
@@ -245,10 +327,7 @@ def compute_S(
 def mask_layers(
     args, model, eval_dataloader, file_name='masking_layers'
 ):
-    if args.n_gpu > 1:
-        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
-    else:
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     original_score = evaluate(args, model, eval_dataloader)
     logger.info("Pruning: original score: %f", original_score)
@@ -278,10 +357,7 @@ def mask_layers(
 def mask_heads_random(
     args, model, eval_dataloader, file_name='masking_random', early_stop_step=None
 ):
-    if args.n_gpu > 1:
-        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
-    else:
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     original_score = evaluate(args, model, eval_dataloader)
     logger.info("Pruning: original score: %f", original_score)
@@ -423,10 +499,7 @@ def unmask_heads(
     args, model, train_dataloader, eval_dataloader, file_name='unmasking', early_stop_step=None,
     head_importance=None
 ):
-    if args.n_gpu > 1:
-        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
-    else:
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     new_head_mask = torch.zeros(n_layers, n_heads).to(args.device)
     num_to_unmask = 12 # max(1, int(new_head_mask.numel() * args.masking_amount))
@@ -503,10 +576,7 @@ def unmask_heads_f5(
     args, model, train_dataloader, eval_dataloader, file_name='unmasking_f5', early_stop_step=None,
     head_importance=None
 ):
-    if args.n_gpu > 1:
-        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
-    else:
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     new_head_mask = torch.zeros(n_layers, n_heads).to(args.device)
     num_to_unmask = 12 # max(1, int(new_head_mask.numel() * args.masking_amount))
@@ -584,10 +654,7 @@ def unmask_heads_per_layer(
     args, model, train_dataloader, eval_dataloader, file_name='unmasking_per_layer', early_stop_step=None,
     head_importance=None
 ):
-    if args.n_gpu > 1:
-        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
-    else:
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     new_head_mask = torch.zeros(n_layers, n_heads).to(args.device)
 
@@ -660,10 +727,7 @@ def unmask_dpp_per_layer(
     args, model, train_dataloader, eval_dataloader, file_name='unmasking_dpp_per_layer', early_stop_step=None,
     head_importance=None, all_S=None
 ):
-    if args.n_gpu > 1:
-        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
-    else:
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     new_head_mask = torch.zeros(n_layers, n_heads).to(args.device)
 
@@ -763,10 +827,7 @@ def unmask_dpp(
     args, model, train_dataloader, eval_dataloader, file_name='unmasking_dpp', early_stop_step=None,
     head_importance=None, all_S=None
 ):
-    if args.n_gpu > 1:
-        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
-    else:
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     new_head_mask = torch.zeros(n_layers, n_heads).to(args.device)
     num_to_unmask = 12
@@ -896,10 +957,7 @@ def gibbs_sampling(
     early_stop_step=2, K=4, annealing=False, T=1, n_groups=4, seed=0
 ):
     torch.manual_seed(seed)
-    if args.n_gpu > 1:
-        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
-    else:
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     layers_per_group = n_layers // n_groups
 
@@ -1013,10 +1071,7 @@ def random_sampling(
     early_stop_step=2, K=4, annealing=False, T=1, n_groups=4, seed=0
 ):
     torch.manual_seed(seed)
-    if args.n_gpu > 1:
-        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
-    else:
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     layers_per_group = n_layers // n_groups
 
@@ -1124,10 +1179,7 @@ def gibbs_sampling_test(
     args, model, train_dataloader, eval_dataloader, val_dataloader=None,
     early_stop_step=2, K=4, annealing=False, T=1, n_groups=4
 ):
-    if args.n_gpu > 1:
-        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
-    else:
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
+    n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
 
     layers_per_group = n_layers // n_groups
 

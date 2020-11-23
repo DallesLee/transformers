@@ -48,74 +48,12 @@ from transformers import (
     glue_output_modes,
     glue_processors,
     set_seed,
-    AdamW
+    AdamW,
+    BertForSequenceClassificationConcrete,
 )
 
 
 logger = logging.getLogger(__name__)
-
-def train(args, model, train_dataloader, eval_dataloader, early_stop_step=36, K=4):
-    model.train()
-    if args.n_gpu > 1:
-        n_layers, n_heads = model.module.config.num_hidden_layers, model.module.config.num_attention_heads
-    else:
-        n_layers, n_heads = model.config.num_hidden_layers, model.config.num_attention_heads
-    head_mask = torch.rand(n_layers, n_heads).to(args.device)
-    head_mask.requires_grad_(requires_grad=True)
-    
-    model.zero_grad()
-
-    optimizer_grouped_parameters = [
-        {
-            "params": [p for n, p in model.named_parameters()],
-        },
-        {
-            "params": [head_mask]
-        },
-    ]
-
-    optimizer = AdamW(optimizer_grouped_parameters, lr=2e-5, eps=1e-8)
-
-    scores = []
-    sparsities = []
-
-    num_to_mask = (n_heads - K) * n_layers
-
-    for i in range(early_stop_step):
-        for step, inputs in enumerate(tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])):
-            for k, v in inputs.items():
-                inputs[k] = v.to(args.device)
-            
-            loss = model(**inputs, head_mask=head_mask)[0]
-            loss.backward()
-            optimizer.step()
-            # head_mask.data = head_mask.data.clamp(min=0, max=1)
-            
-            model.zero_grad()
-
-        current_heads_to_mask = head_mask.abs().view(-1).sort()[1]
-        
-        new_head_mask = head_mask.clone().view(-1)
-        new_head_mask[current_heads_to_mask[:num_to_mask]] = 0.0
-        new_head_mask = new_head_mask.view_as(head_mask)
-
-        current_score = evaluate(args, model, eval_dataloader, head_mask=new_head_mask.clone())
-        sparsity = 100 - torch.nonzero(new_head_mask).size(0) / new_head_mask.numel() * 100
-        scores.append(current_score * 100)
-        sparsities.append(sparsity)
-
-        logger.info(
-            "Masking: current score: %f, remaning heads %d (%.1f percents)",
-            current_score,
-            torch.nonzero(new_head_mask).size(0),
-            100 - sparsity,
-        )
-    
-    output_dir = os.path.join(args.output_dir, "joint/")
-    os.makedirs(output_dir, exist_ok=True)
-    save_results(args, scores, sparsities, head_mask.detach().cpu().numpy(), "magnitude_pruning")
-
-    return scores, sparsities, head_mask
 
 def test(args, model, train_dataloader, eval_dataset, K=10):
     lims = np.linspace(0, len(eval_dataset), K+1).astype('int')
@@ -306,22 +244,6 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(
         args.tokenizer_name if args.tokenizer_name else args.model_name_or_path, cache_dir=args.cache_dir,
     )
-    model = AutoModelForSequenceClassification.from_pretrained(
-        args.model_name_or_path,
-        from_tf=bool(".ckpt" in args.model_name_or_path),
-        config=config,
-        cache_dir=args.cache_dir,
-    )
-    model.eval()
-
-    # Distributed and parallel training
-    model.to(args.device)
-    if args.local_rank != -1:
-        model = torch.nn.parallel.DistributedDataParallel(
-            model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=True
-        )
-    elif args.n_gpu > 1:
-        model = torch.nn.DataParallel(model)
 
     # Print/save training arguments
     os.makedirs(args.output_dir, exist_ok=True)
@@ -330,7 +252,7 @@ def main():
 
     # Prepare dataset for the GLUE task
     train_dataset = GlueDataset(args, tokenizer=tokenizer)
-    split = int(len(train_dataset) * 0.99)
+    split = int(len(train_dataset) * 0.9)
     train_sampler = SequentialSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(
         train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
@@ -386,9 +308,29 @@ def main():
     #         args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=1
     #     )
     for k in range(1,12):
-        score, sparisity, head_mask = gibbs_sampling(
-            args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=1, annealing=True
+        model = BertForSequenceClassificationConcrete.from_pretrained(
+            args.model_name_or_path,
+            from_tf=bool(".ckpt" in args.model_name_or_path),
+            config=config,
+            cache_dir=args.cache_dir,
         )
+        model.eval()
+
+        # Distributed and parallel training
+        model.to(args.device)
+        if args.local_rank != -1:
+            model = torch.nn.parallel.DistributedDataParallel(
+                model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=True
+            )
+        elif args.n_gpu > 1:
+            model = torch.nn.DataParallel(model)
+        # score, sparisity, head_mask = gibbs_sampling(
+        #     args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=1, annealing=False
+        # )
+        score, sparsity, head_mask = random_sampling(
+            args, model, eval_dataloader, val_dataloader, early_stop_step=36, K=k, n_groups=1
+        )
+        score = train(args, model, head_mask, train_dataset, eval_dataset, epoch=4.0)
         # scores.append(score)
         # sparsities.append(sparisity)
         # all_head_masks.append(head_mask)

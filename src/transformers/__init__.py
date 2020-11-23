@@ -495,6 +495,7 @@ if is_torch_available():
 
     # Trainer
     from .trainer import EvalPrediction, Trainer, set_seed, torch_distributed_zero_first
+    from .trainer_dropout import DropoutTrainer
 
 # TensorFlow
 if is_tf_available():
