@@ -190,7 +190,8 @@ def main():
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             compute_metrics=build_compute_metrics_fn(data_args.task_name),
-            optimizers=(optimizer, None)
+            optimizers=(optimizer, None),
+            num_to_mask=num_to_mask,
         )
 
         # Training

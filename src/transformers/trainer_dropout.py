@@ -121,15 +121,19 @@ class DropoutTrainer(Trainer):
         self.num_to_mask = num_to_mask
 
     def convert_gate_to_mask(self, gates, num_to_mask=None):
+        head_mask = gates
         if num_to_mask is not None:
-            head_mask = torch.ones_like(gates)
+            new_head_mask = torch.ones_like(gates)
             current_heads_to_mask = gates.view(-1).sort()[1]
             current_heads_to_mask = current_heads_to_mask[:num_to_mask]
-            head_mask = head_mask.view(-1)
-            head_mask[current_heads_to_mask] = 0.0
-            head_mask = head_mask.view_as(gates)
+            new_head_mask = new_head_mask.view(-1)
+            new_head_mask[current_heads_to_mask] = 0.0
+            new_head_mask = new_head_mask.view_as(gates)
         else:
-            head_mask = (gates > 0.5).float()
+            new_head_mask = (gates > 0.5).float()
+        
+        with torch.no_grad():
+            head_mask += new_head_mask - gates
         return head_mask
 
     def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
