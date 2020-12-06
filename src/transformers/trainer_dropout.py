@@ -119,7 +119,8 @@ class DropoutTrainer(Trainer):
             model, args, data_collator, train_dataset, eval_dataset, tokenizer, model_init, compute_metrics,
             tb_writer, optimizers, **kwargs
         )
-        self.num_to_mask = num_to_mask
+        self.num_of_heads = num_of_heads
+        self.temperature = temperature
 
     def gumbel_soft_top_k(self, w, k, t):
         # apply gumbel noise
