@@ -128,7 +128,7 @@ class DropoutTrainer(Trainer):
         r = -torch.log(-torch.log(u)) + w
 
         # soft top k
-        p = torch.zeros([k, w.size()[0]])
+        p = torch.zeros([k, w.size()[0]]).to(w.device)
         p[0] = torch.softmax(r/t,0)
         for j in range(1,k):
             r += torch.log(1-p[j-1])
