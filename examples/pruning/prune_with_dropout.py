@@ -173,7 +173,7 @@ def main():
             },
             {
                 "params": [p for n, p in model.named_parameters() if "log_a" in n],
-                "lr": 1e-1,
+                "lr": 1e-3,
             },
         ]
         optimizer = AdamW(

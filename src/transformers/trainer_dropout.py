@@ -111,7 +111,8 @@ class DropoutTrainer(Trainer):
         compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
         tb_writer: Optional["SummaryWriter"] = None,
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
-        num_to_mask: Optional[int] = 24,
+        num_of_heads: Optional[int] = 36,
+        temperature: Optional[float] = 1.0,
         **kwargs,
     ):
         super().__init__(
@@ -120,21 +121,19 @@ class DropoutTrainer(Trainer):
         )
         self.num_to_mask = num_to_mask
 
-    def convert_gate_to_mask(self, gates, num_to_mask=None):
-        head_mask = gates
-        if num_to_mask is not None:
-            new_head_mask = torch.ones_like(gates)
-            current_heads_to_mask = gates.view(-1).sort()[1]
-            current_heads_to_mask = current_heads_to_mask[:num_to_mask]
-            new_head_mask = new_head_mask.view(-1)
-            new_head_mask[current_heads_to_mask] = 0.0
-            new_head_mask = new_head_mask.view_as(gates)
-        else:
-            new_head_mask = (gates > 0.5).float()
-        
-        with torch.no_grad():
-            head_mask += new_head_mask - gates
-        return head_mask
+    def gumbel_soft_top_k(self, w, k, t):
+        # apply gumbel noise
+        u = torch.rand_like(w)
+        r = -torch.log(-torch.log(u)) + w
+
+        # soft top k
+        p = torch.zeros([k, w.size()[0]])
+        p[0] = torch.softmax(r/t,0)
+        for j in range(1,k):
+            r += torch.log(1-p[j-1])
+            p[j] = torch.softmax(r / t, 0)
+            
+        return p.sum(0)
 
     def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
         """
@@ -162,7 +161,7 @@ class DropoutTrainer(Trainer):
             return self._training_step(model, inputs, self.optimizer)
         
         gates = torch.stack(model.get_gate_values())
-        head_mask = self.convert_gate_to_mask(gates, self.num_to_mask)
+        head_mask = self.gumbel_soft_top_k(gates.view(-1), self.num_to_mask, self.temperature).view_as(gates)
         model.apply_masks(head_mask)
 
         model.train()
