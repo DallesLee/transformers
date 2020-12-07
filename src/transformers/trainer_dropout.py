@@ -121,7 +121,7 @@ class DropoutTrainer(Trainer):
         )
         self.num_of_heads = num_of_heads
         self.temperature = temperature
-        self.w = nn.Parameter(torch.empty([12,12])).to(model.device)
+        self.w = nn.Parameter(torch.empty([12,12]).to(model.device))
         nn.init.xavier_uniform_(self.w)
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
