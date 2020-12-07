@@ -108,13 +108,13 @@ def main():
     except KeyError:
         raise ValueError("Task not found: %s" % (data_args.task_name))
 
-    def convert_gate_to_mask(gates, num_to_mask=None):
-        if num_to_mask is not None:
-            head_mask = torch.ones_like(gates)
-            current_heads_to_mask = gates.view(-1).sort()[1]
-            current_heads_to_mask = current_heads_to_mask[:num_to_mask]
+    def convert_gate_to_mask(gates, num_of_heads=None):
+        if num_of_heads is not None:
+            head_mask = torch.zeros_like(gates)
+            current_heads_to_keep = gates.view(-1).sort(descending = True)[1]
+            current_heads_to_keep = current_heads_to_keep[:num_of_heads]
             head_mask = head_mask.view(-1)
-            head_mask[current_heads_to_mask] = 0.0
+            head_mask[current_heads_to_keep] = 1.0
             head_mask = head_mask.view_as(gates)
         else:
             head_mask = (gates > 0.5).float()
@@ -156,51 +156,55 @@ def main():
         if training_args.do_eval
         else None
     )
+    for temperature in [0.001, 0.01, 0.1, 1, 10, 100]:
+        for num_of_heads in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
+            torch.manual_seed(42)
+            model = BertForSequenceClassificationConcrete.from_pretrained(
+                model_args.model_name_or_path,
+                config=config,
+            )
 
-    for num_to_mask in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
-        torch.manual_seed(42)
-        model = BertForSequenceClassificationConcrete.from_pretrained(
-            model_args.model_name_or_path,
-            config=config,
-        )
+            model.apply_gates()
 
-        model.apply_gates()
+            optimizer_grouped_parameters = [
+                {
+                    "params": [p for n, p in model.named_parameters() if not "log_a" in n],
+                    "lr": training_args.learning_rate,
+                },
+                {
+                    "params": [p for n, p in model.named_parameters() if "log_a" in n],
+                    "lr": 1e-3,
+                },
+            ]
+            optimizer = AdamW(
+                optimizer_grouped_parameters,
+                betas=(0.9, 0.999),
+                eps=1e-8,
+            )
 
-        optimizer_grouped_parameters = [
-            {
-                "params": [p for n, p in model.named_parameters() if not "log_a" in n],
-                "lr": training_args.learning_rate,
-            },
-            {
-                "params": [p for n, p in model.named_parameters() if "log_a" in n],
-                "lr": 1e-3,
-            },
-        ]
-        optimizer = AdamW(
-            optimizer_grouped_parameters,
-            betas=(0.9, 0.999),
-            eps=1e-8,
-        )
+            # Initialize our Trainer
+            training_args.max_steps = -1
+            trainer = DropoutTrainer(
+                model=model,
+                args=training_args,
+                train_dataset=train_dataset,
+                eval_dataset=eval_dataset,
+                compute_metrics=build_compute_metrics_fn(data_args.task_name),
+                optimizers=(optimizer, None),
+                num_of_heads=num_of_heads,
+                temperature=temperature,
+            )
 
-        # Initialize our Trainer
-        training_args.max_steps = -1
-        trainer = DropoutTrainer(
-            model=model,
-            args=training_args,
-            train_dataset=train_dataset,
-            eval_dataset=eval_dataset,
-            compute_metrics=build_compute_metrics_fn(data_args.task_name),
-            optimizers=(optimizer, None),
-            num_to_mask=num_to_mask,
-        )
-
-        # Training
-        trainer.train()
-        trainer.save_model()
-
-        score = trainer.evaluate(eval_dataset=eval_dataset)['eval_acc']
-        # print_2d_tensor(head_mask)
-        logger.info("remaining heads: {}, accuracy: {}".format(144-num_to_mask, score * 100))
+            # Training
+            trainer.train()
+            trainer.save_model()
+            
+            head_mask = torch.stack(model.get_masks())
+            head_mask = convert_gate_to_mask(head_mask, num_of_heads)
+            model.apply_masks(head_mask)
+            score = trainer.evaluate(eval_dataset=eval_dataset)['eval_acc']
+            # print_2d_tensor(head_mask)
+            logger.info("temperature: {}, num of heads: {}, accuracy: {}".format(temperature, num_of_heads, score * 100))
     
 
 
