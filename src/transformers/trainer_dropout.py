@@ -208,10 +208,8 @@ class DropoutTrainer(Trainer):
             gates = torch.stack(model.get_gate_values())
             head_mask = self.gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
         else:
-            print(self.w)
             head_mask = self.gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
         model.apply_masks(head_mask)
-        print(head_mask)
 
         model.train()
         inputs = self._prepare_inputs(inputs)
