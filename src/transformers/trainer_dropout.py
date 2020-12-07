@@ -113,6 +113,7 @@ class DropoutTrainer(Trainer):
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
         num_of_heads: Optional[int] = 36,
         temperature: Optional[float] = 1.0,
+        w_lr: Optional[float] = None,
         **kwargs,
     ):
         super().__init__(
@@ -121,6 +122,7 @@ class DropoutTrainer(Trainer):
         )
         self.num_of_heads = num_of_heads
         self.temperature = temperature
+        self.w_lr = w_lr
         self.w = nn.Parameter(torch.empty([12,12]).to(model.device))
         nn.init.xavier_uniform_(self.w)
 
@@ -149,7 +151,13 @@ class DropoutTrainer(Trainer):
                 betas=(self.args.adam_beta1, self.args.adam_beta2),
                 eps=self.args.adam_epsilon,
             )
-        self.optimizer.add_param_group({"params": self.w})
+        if self.w_lr is None:
+            self.optimizer.add_param_group({"params": self.w})
+        else:
+            self.optimizer.add_param_group({
+                "params": self.w,
+                "lr": self.w_lr,
+            })
         if self.lr_scheduler is None:
             self.lr_scheduler = get_linear_schedule_with_warmup(
                 self.optimizer, num_warmup_steps=self.args.warmup_steps, num_training_steps=num_training_steps
