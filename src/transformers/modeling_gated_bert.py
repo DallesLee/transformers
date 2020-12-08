@@ -1120,7 +1120,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
             w = nn.Parameter(torch.empty(self.head_size).to(self.device))
             nn.init.xavier_uniform_(w)
             if linear:
-                dense = nn.Linear(w.view(-1).size()[0], w.view(-1).size()[0])
+                dense = nn.Linear(w.view(-1).size()[0], w.view(-1).size()[0]).to(self.device)
                 self.w = dense(w.view(-1)).view_as(w)
             else:
                 self.w = w
