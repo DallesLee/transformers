@@ -27,7 +27,7 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 
-from .concrete_gate import ConcreteGate
+from .concrete_gate import ConcreteGate, gumbel_soft_top_k
 
 from .activations import gelu, gelu_new, swish
 from .configuration_bert import BertConfig

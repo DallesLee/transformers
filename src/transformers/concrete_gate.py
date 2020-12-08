@@ -66,3 +66,19 @@ class ConcreteGate(nn.Module):
         """ Computes the fraction of gates which are now active (non-zero) """
         is_nonzero = self.get_gates(False) == 0.0
         return torch.mean(is_nonzero.float())
+
+def gumbel_soft_top_k(w, k, t):
+    # apply gumbel noise
+    u = torch.rand_like(w)
+    r = -torch.log(-torch.log(u)) + w
+    epsilon = torch.ones_like(r)
+    epsilon *= np.finfo(np.float32).tiny
+
+    # soft top k
+    p = torch.zeros([k, w.size()[0]]).to(w.device)
+    p[0] = torch.softmax(r/t,0)
+    for j in range(1,k):
+        r += torch.log(torch.max(1-p[j-1], epsilon))
+        p[j] = torch.softmax(r / t, 0)
+        
+    return p.sum(0)
