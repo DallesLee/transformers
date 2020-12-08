@@ -1118,12 +1118,10 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
     def apply_dropout(self, num_of_heads, temperature, linear=False):
         if self.w is None:
             w = nn.Parameter(torch.empty(self.head_size).to(self.device))
-            print(w.device)
             nn.init.xavier_uniform_(w)
             if linear:
                 dense = nn.Linear(w.view(-1).size()[0], w.view(-1).size()[0]).to(self.device)
                 self.w = dense(w.view(-1)).view_as(w)
-                print(self.w.device)
             else:
                 self.w = w
         self.num_of_heads = num_of_heads
