@@ -1056,7 +1056,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
                 head_mask = gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
             else:
                 if self.linear:
-                    self.w = self.dense(self.hidden_w)
+                    self.w = self.dense(self.hidden_w.view(-1)).view_as(self.hidden_w)
                 else:
                     self.w = self.hidden_w
                 head_mask = gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
