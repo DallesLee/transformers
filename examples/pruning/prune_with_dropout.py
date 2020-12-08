@@ -156,7 +156,7 @@ def main():
         if training_args.do_eval
         else None
     )
-    for temperature in [0.0001, 0.001, 0.01]:
+    for temperature in [0.0001, 0.001, 0.01, 0.1, 1, 10, 100]:
         for num_of_heads in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
             torch.manual_seed(42)
             model = BertForSequenceClassificationConcrete.from_pretrained(
@@ -164,44 +164,40 @@ def main():
                 config=config,
             )
 
-            # model.apply_gates()
+            model.apply_dropout(num_of_heads, temperature)
 
-            # optimizer_grouped_parameters = [
-            #     {
-            #         "params": [p for n, p in model.named_parameters() if not "log_a" in n],
-            #         "lr": training_args.learning_rate,
-            #     },
-            #     {
-            #         "params": [p for n, p in model.named_parameters() if "log_a" in n],
-            #         "lr": 1e-1,
-            #     },
-            # ]
-            # optimizer = AdamW(
-            #     optimizer_grouped_parameters,
-            #     betas=(0.9, 0.999),
-            #     eps=1e-8,
-            # )
+            optimizer_grouped_parameters = [
+                {
+                    "params": [p for n, p in model.named_parameters() if n != "w"],
+                    "lr": training_args.learning_rate,
+                },
+                {
+                    "params": [p for n, p in model.named_parameters() if n == "w"],
+                    "lr": 1e-1,
+                },
+            ]
+            optimizer = AdamW(
+                optimizer_grouped_parameters,
+                betas=(0.9, 0.999),
+                eps=1e-8,
+            )
 
             # Initialize our Trainer
             training_args.max_steps = -1
-            trainer = DropoutTrainer(
+            trainer = Trainer(
                 model=model,
                 args=training_args,
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
                 compute_metrics=build_compute_metrics_fn(data_args.task_name),
-                # optimizers=(optimizer, None),
-                num_of_heads=num_of_heads,
-                temperature=temperature,
-                w_lr=5e-1,
+                optimizers=(optimizer, None),
             )
 
             # Training
             trainer.train()
             trainer.save_model()
             
-            # head_mask = torch.stack(model.get_masks())
-            head_mask = convert_gate_to_mask(trainer.w, num_of_heads)
+            head_mask = convert_gate_to_mask(model.get_w(), num_of_heads)
             model.apply_masks(head_mask)
             score = trainer.evaluate(eval_dataset=eval_dataset)['eval_acc']
             # print_2d_tensor(head_mask)

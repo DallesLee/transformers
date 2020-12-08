@@ -1123,6 +1123,9 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         self.temperature = temperature
         self._apply_dropout = True
 
+    def get_w(self):
+        return self.w
+
 @add_start_docstrings(
     """Bert Model with a multiple choice classification head on top (a linear layer on top of
     the pooled output and a softmax) e.g. for RocStories/SWAG tasks. """,
@@ -1136,6 +1139,12 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, 1)
         self._apply_gates = False
+
+        self.w = None
+        self.num_of_heads = None
+        self.temperature = None
+        self._apply_dropout = False
+        self.head_size = [config.num_hidden_layers, config.num_attention_heads]
 
         self.init_weights()
 
@@ -1164,6 +1173,14 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
             Indices should be in ``[0, ..., num_choices-1]`` where `num_choices` is the size of the second dimension
             of the input tensors. (see `input_ids` above)
         """
+        if self._apply_dropout:
+            if self._apply_gates:
+                gates = self.get_gate_values()
+                head_mask = gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
+            else:
+                head_mask = gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
+            self.apply_masks(head_mask)    
+
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         num_choices = input_ids.shape[1] if input_ids is not None else inputs_embeds.shape[1]
 
@@ -1233,6 +1250,17 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
     def get_masks(self):
         return self.bert.get_masks()
 
+    def apply_dropout(self, num_of_heads, temperature):
+        if self.w is None:
+            self.w = nn.Parameter(torch.empty(self.head_size).to(self.device))
+            nn.init.xavier_uniform_(self.w)
+        self.num_of_heads = num_of_heads
+        self.temperature = temperature
+        self._apply_dropout = True
+    
+    def get_w(self):
+        return self.w
+
 @add_start_docstrings(
     """Bert Model with a token classification head on top (a linear layer on top of
     the hidden-states output) e.g. for Named-Entity-Recognition (NER) tasks. """,
@@ -1247,6 +1275,12 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         self._apply_gates = False
+
+        self.w = None
+        self.num_of_heads = None
+        self.temperature = None
+        self._apply_dropout = False
+        self.head_size = [config.num_hidden_layers, config.num_attention_heads]
 
         self.init_weights()
 
@@ -1275,6 +1309,14 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
             Indices should be in ``[0, ..., config.num_labels - 1]``.
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        if self._apply_dropout:
+            if self._apply_gates:
+                gates = self.get_gate_values()
+                head_mask = gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
+            else:
+                head_mask = gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
+            self.apply_masks(head_mask)
 
         outputs = self.bert(
             input_ids,
@@ -1340,6 +1382,17 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
     def get_masks(self):
         return self.bert.get_masks()
 
+    def apply_dropout(self, num_of_heads, temperature):
+        if self.w is None:
+            self.w = nn.Parameter(torch.empty(self.head_size).to(self.device))
+            nn.init.xavier_uniform_(self.w)
+        self.num_of_heads = num_of_heads
+        self.temperature = temperature
+        self._apply_dropout = True
+
+    def get_w(self):
+        return self.w
+
 @add_start_docstrings(
     """Bert Model with a span classification head on top for extractive question-answering tasks like SQuAD (a linear
     layers on top of the hidden-states output to compute `span start logits` and `span end logits`). """,
@@ -1353,6 +1406,12 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
         self.bert = BertModelConcrete(config)
         self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
         self._apply_gates = False
+
+        self.w = None
+        self.num_of_heads = None
+        self.temperature = None
+        self._apply_dropout = False
+        self.head_size = [config.num_hidden_layers, config.num_attention_heads]
 
         self.init_weights()
 
@@ -1387,6 +1446,14 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
             Position outside of the sequence are not taken into account for computing the loss.
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        if self._apply_dropout:
+            if self._apply_gates:
+                gates = self.get_gate_values()
+                head_mask = gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
+            else:
+                head_mask = gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
+            self.apply_masks(head_mask)
 
         outputs = self.bert(
             input_ids,
@@ -1457,3 +1524,14 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
     
     def get_masks(self):
         return self.bert.get_masks()
+
+    def apply_dropout(self, num_of_heads, temperature):
+        if self.w is None:
+            self.w = nn.Parameter(torch.empty(self.head_size).to(self.device))
+            nn.init.xavier_uniform_(self.w)
+        self.num_of_heads = num_of_heads
+        self.temperature = temperature
+        self._apply_dropout = True
+
+    def get_w(self):
+        return self.w
