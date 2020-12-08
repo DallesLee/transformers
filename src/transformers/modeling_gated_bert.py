@@ -1050,9 +1050,9 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         if self._apply_dropout:
             if self._apply_gates:
                 gates = self.get_gate_values()
-                head_mask = self.gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
+                head_mask = gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
             else:
-                head_mask = self.gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
+                head_mask = gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
             self.apply_masks(head_mask)
 
         outputs = self.bert(
