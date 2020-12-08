@@ -1010,6 +1010,12 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         self._apply_gates = False
+        
+        self.w = None
+        self.num_of_heads = None
+        self.temperature = None
+        self._apply_dropout = False
+        self.head_size = [config.num_hidden_layers, config.num_attention_heads]
 
         self.init_weights()
 
@@ -1040,6 +1046,14 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
             If :obj:`config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        if self._apply_dropout:
+            if self._apply_gates:
+                gates = self.get_gate_values()
+                head_mask = self.gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
+            else:
+                head_mask = self.gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
+            self.apply_masks(head_mask)
 
         outputs = self.bert(
             input_ids,
@@ -1084,7 +1098,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         )
     
     def get_gate_values(self):
-        return self.bert.get_gate_values()
+        return torch.stack(self.bert.get_gate_values())
 
     def apply_gates(self, l0_penalty=1.0):
         self._apply_gates = True
@@ -1099,7 +1113,15 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         self.bert.apply_masks(head_mask)
 
     def get_masks(self):
-        return self.bert.get_masks()
+        return torch.stack(self.bert.get_masks())
+    
+    def apply_dropout(self, num_of_heads, temperature):
+        if self.w is None:
+            self.w = nn.Parameter(torch.empty(self.head_size).to(self.device))
+            nn.init.xavier_uniform_(self.w)
+        self.num_of_heads = num_of_heads
+        self.temperature = temperature
+        self._apply_dropout = True
 
 @add_start_docstrings(
     """Bert Model with a multiple choice classification head on top (a linear layer on top of

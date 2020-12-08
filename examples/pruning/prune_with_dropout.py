@@ -156,7 +156,7 @@ def main():
         if training_args.do_eval
         else None
     )
-    for temperature in [0.001, 0.01, 0.1, 1, 10, 100]:
+    for temperature in [0.0001, 0.001, 0.01]:
         for num_of_heads in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
             torch.manual_seed(42)
             model = BertForSequenceClassificationConcrete.from_pretrained(
@@ -193,6 +193,7 @@ def main():
                 # optimizers=(optimizer, None),
                 num_of_heads=num_of_heads,
                 temperature=temperature,
+                w_lr=5e-1,
             )
 
             # Training
