@@ -1132,7 +1132,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         self.linear = linear
 
     def get_w(self):
-        return self.w if self.w else self.hidden_w
+        return self.w if self.w is not None else self.hidden_w
 
 @add_start_docstrings(
     """Bert Model with a multiple choice classification head on top (a linear layer on top of
