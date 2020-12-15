@@ -31,6 +31,7 @@ from transformers import GlueDataTrainingArguments as DataTrainingArguments
 from transformers import (
     HfArgumentParser,
     Trainer,
+    DropoutTrainer,
     TrainingArguments,
     glue_compute_metrics,
     glue_output_modes,
@@ -156,7 +157,12 @@ def main():
         else None
     )
 
-    for l0_penalty in [0]:
+    if data_args.task_name == "mnli":
+        metric = "eval_mnli/acc"
+    else:
+        metric = "eval_acc"
+
+    for l0_penalty in [0.02, 0.05, 0.1, 0.5]:
         torch.manual_seed(42)
         model = BertForSequenceClassificationConcrete.from_pretrained(
             model_args.model_name_or_path,
@@ -189,31 +195,31 @@ def main():
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             compute_metrics=build_compute_metrics_fn(data_args.task_name),
-            optimizers=(optimizer, None)
+            # optimizers=(optimizer, None)
         )
 
         # Training
         trainer.train()
         trainer.save_model()
 
-        eval_result = trainer.evaluate(eval_dataset=eval_dataset)
+        # eval_result = trainer.evaluate(eval_dataset=eval_dataset)
 
-        output_eval_file = os.path.join(
-            training_args.output_dir, f"eval_results_{eval_dataset.args.task_name}.txt"
-        )
-        if trainer.is_world_master():
-            with open(output_eval_file, "w") as writer:
-                logger.info("***** Eval results {} *****".format(eval_dataset.args.task_name))
-                for key, value in eval_result.items():
-                    logger.info("  %s = %s", key, value)
-                    writer.write("%s = %s\n" % (key, value))
+        # output_eval_file = os.path.join(
+        #     training_args.output_dir, f"eval_results_{eval_dataset.args.task_name}.txt"
+        # )
+        # if trainer.is_world_master():
+        #     with open(output_eval_file, "w") as writer:
+        #         logger.info("***** Eval results {} *****".format(eval_dataset.args.task_name))
+        #         for key, value in eval_result.items():
+        #             logger.info("  %s = %s", key, value)
+        #             writer.write("%s = %s\n" % (key, value))
 
-        gates = torch.stack(model.get_gate_values())
+        gates = model.get_gate_values()
         print_2d_tensor(gates)
         head_mask = convert_gate_to_mask(gates)
         model.remove_gates()
         model.apply_masks(head_mask)
-        score = trainer.evaluate(eval_dataset=eval_dataset)['eval_acc']
+        score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
         # print_2d_tensor(head_mask)
         logger.info("lambda: {}, remaining heads: {}, accuracy: {}".format(l0_penalty, head_mask.sum(), score * 100))
 
@@ -221,7 +227,7 @@ def main():
             head_mask = convert_gate_to_mask(gates, num_to_mask)
             # print_2d_tensor(head_mask)
             model.apply_masks(head_mask)
-            score = trainer.evaluate(eval_dataset=eval_dataset)['eval_acc']
+            score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
             sparsity = 100 - head_mask.sum() / head_mask.numel() * 100
             logger.info(
                 "Masking: current score: %f, remaining heads %d (%.1f percents)",

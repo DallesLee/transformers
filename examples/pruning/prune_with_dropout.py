@@ -156,8 +156,14 @@ def main():
         if training_args.do_eval
         else None
     )
-    for temperature in [0.0001, 0.001, 0.01, 0.1, 1, 10, 100]:
-        for num_of_heads in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
+
+    if data_args.task_name == "mnli":
+        metric = "eval_mnli/acc"
+    else:
+        metric = "eval_acc"
+
+    for temperature in [0.0000001,0.00000001]:
+        for num_of_heads in [24]:
             torch.manual_seed(42)
             model = BertForSequenceClassificationConcrete.from_pretrained(
                 model_args.model_name_or_path,
@@ -190,18 +196,29 @@ def main():
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
                 compute_metrics=build_compute_metrics_fn(data_args.task_name),
-                optimizers=(optimizer, None),
+                # optimizers=(optimizer, None),
             )
 
             # Training
             trainer.train()
             trainer.save_model()
-            
-            head_mask = convert_gate_to_mask(model.get_w(), num_of_heads)
-            model.apply_masks(head_mask)
-            score = trainer.evaluate(eval_dataset=eval_dataset)['eval_acc']
+            score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
             # print_2d_tensor(head_mask)
             logger.info("temperature: {}, num of heads: {}, accuracy: {}".format(temperature, num_of_heads, score * 100))
+
+            model._apply_dropout = False
+            for num_to_unmask in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
+                head_mask = convert_gate_to_mask(model.get_w(), num_to_unmask)
+                # print_2d_tensor(head_mask)
+                model.apply_masks(head_mask)
+                score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
+                sparsity = 100 - head_mask.sum() / head_mask.numel() * 100
+                logger.info(
+                    "Masking: current score: %f, remaining heads %d (%.1f percents)",
+                    score,
+                    head_mask.sum(),
+                    100 - sparsity,
+                )
     
 
 

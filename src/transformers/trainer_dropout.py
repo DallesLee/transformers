@@ -111,20 +111,20 @@ class DropoutTrainer(Trainer):
         compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
         tb_writer: Optional["SummaryWriter"] = None,
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
-        num_of_heads: Optional[int] = 36,
-        temperature: Optional[float] = 1.0,
-        w_lr: Optional[float] = None,
+        # num_of_heads: Optional[int] = 36,
+        # temperature: Optional[float] = 1.0,
+        # w_lr: Optional[float] = None,
         **kwargs,
     ):
         super().__init__(
             model, args, data_collator, train_dataset, eval_dataset, tokenizer, model_init, compute_metrics,
             tb_writer, optimizers, **kwargs
         )
-        self.num_of_heads = num_of_heads
-        self.temperature = temperature
-        self.w_lr = w_lr
-        self.w = nn.Parameter(torch.empty([12,12]).to(model.device))
-        nn.init.xavier_uniform_(self.w)
+        # self.num_of_heads = num_of_heads
+        # self.temperature = temperature
+        # self.w_lr = w_lr
+        # self.w = nn.Parameter(torch.empty([12,12]).to(model.device))
+        # nn.init.xavier_uniform_(self.w)
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         """
@@ -151,33 +151,33 @@ class DropoutTrainer(Trainer):
                 betas=(self.args.adam_beta1, self.args.adam_beta2),
                 eps=self.args.adam_epsilon,
             )
-        if self.w_lr is None:
-            self.optimizer.add_param_group({"params": self.w})
-        else:
-            self.optimizer.add_param_group({
-                "params": self.w,
-                "lr": self.w_lr,
-            })
+        # if self.w_lr is None:
+        #     self.optimizer.add_param_group({"params": self.w})
+        # else:
+        #     self.optimizer.add_param_group({
+        #         "params": self.w,
+        #         "lr": self.w_lr,
+        #     })
         if self.lr_scheduler is None:
             self.lr_scheduler = get_linear_schedule_with_warmup(
                 self.optimizer, num_warmup_steps=self.args.warmup_steps, num_training_steps=num_training_steps
             )
 
-    def gumbel_soft_top_k(self, w, k, t):
-        # apply gumbel noise
-        u = torch.rand_like(w)
-        r = -torch.log(-torch.log(u)) + w
-        epsilon = torch.ones_like(r)
-        epsilon *= np.finfo(np.float32).tiny
+    # def gumbel_soft_top_k(self, w, k, t):
+    #     # apply gumbel noise
+    #     u = torch.rand_like(w)
+    #     r = -torch.log(-torch.log(u)) + w
+    #     epsilon = torch.ones_like(r)
+    #     epsilon *= np.finfo(np.float32).tiny
 
-        # soft top k
-        p = torch.zeros([k, w.size()[0]]).to(w.device)
-        p[0] = torch.softmax(r/t,0)
-        for j in range(1,k):
-            r += torch.log(torch.max(1-p[j-1], epsilon))
-            p[j] = torch.softmax(r / t, 0)
+    #     # soft top k
+    #     p = torch.zeros([k, w.size()[0]]).to(w.device)
+    #     p[0] = torch.softmax(r/t,0)
+    #     for j in range(1,k):
+    #         r += torch.log(torch.max(1-p[j-1], epsilon))
+    #         p[j] = torch.softmax(r / t, 0)
             
-        return p.sum(0)
+    #     return p.sum(0)
 
     def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
         """
@@ -204,34 +204,35 @@ class DropoutTrainer(Trainer):
             )
             return self._training_step(model, inputs, self.optimizer)
         
-        if model._apply_gates:
-            gates = torch.stack(model.get_gate_values())
-            head_mask = self.gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
-        else:
-            head_mask = self.gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
-        model.apply_masks(head_mask)
+        # if model._apply_gates:
+        #     gates = torch.stack(model.get_gate_values())
+        #     head_mask = self.gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
+        # else:
+        #     head_mask = self.gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
+        # model.apply_masks(head_mask)
 
-        model.train()
-        inputs = self._prepare_inputs(inputs)
+        with torch.autograd.set_detect_anomaly(True):
+            model.train()
+            inputs = self._prepare_inputs(inputs)
 
-        if self.args.fp16 and _use_native_amp:
-            with autocast():
+            if self.args.fp16 and _use_native_amp:
+                with autocast():
+                    loss = self.compute_loss(model, inputs)
+            else:
                 loss = self.compute_loss(model, inputs)
-        else:
-            loss = self.compute_loss(model, inputs)
 
-        if self.args.n_gpu > 1:
-            loss = loss.mean()  # mean() to average on multi-gpu parallel training
+            if self.args.n_gpu > 1:
+                loss = loss.mean()  # mean() to average on multi-gpu parallel training
 
-        if self.args.gradient_accumulation_steps > 1:
-            loss = loss / self.args.gradient_accumulation_steps
+            if self.args.gradient_accumulation_steps > 1:
+                loss = loss / self.args.gradient_accumulation_steps
 
-        if self.args.fp16 and _use_native_amp:
-            self.scaler.scale(loss).backward()
-        elif self.args.fp16 and _use_apex:
-            with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-                scaled_loss.backward()
-        else:
-            loss.backward()
+            if self.args.fp16 and _use_native_amp:
+                self.scaler.scale(loss).backward()
+            elif self.args.fp16 and _use_apex:
+                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                loss.backward()
 
         return loss.detach()

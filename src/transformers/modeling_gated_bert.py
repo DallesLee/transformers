@@ -1087,7 +1087,6 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
             else:
                 loss_fct = CrossEntropyLoss()
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-
         if self._apply_gates:
             loss += outputs[-1]
             output = (logits,) + outputs[2:-1]
@@ -1105,7 +1104,8 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         )
     
     def get_gate_values(self):
-        return torch.stack(self.bert.get_gate_values())
+        gates = self.bert.get_gate_values()
+        return torch.stack(gates) if gates[0] is not None else gates
 
     def apply_gates(self, l0_penalty=1.0):
         self._apply_gates = True
@@ -1241,7 +1241,8 @@ class BertForMultipleChoiceConcrete(BertPreTrainedModel):
         )
     
     def get_gate_values(self):
-        return self.bert.get_gate_values()
+        gates = self.bert.get_gate_values()
+        return torch.stack(gates) if gates is not None else gates
 
     def apply_gates(self, l0_penalty=1.0):
         self._apply_gates = True
@@ -1373,7 +1374,8 @@ class BertForTokenClassificationConcrete(BertPreTrainedModel):
         )
 
     def get_gate_values(self):
-        return self.bert.get_gate_values()
+        gates = self.bert.get_gate_values()
+        return torch.stack(gates) if gates is not None else gates
 
     def apply_gates(self, l0_penalty=1.0):
         self._apply_gates = True
@@ -1516,7 +1518,8 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
         )
 
     def get_gate_values(self):
-        return self.bert.get_gate_values()
+        gates = self.bert.get_gate_values()
+        return torch.stack(gates) if gates is not None else gates
 
     def apply_gates(self, l0_penalty=1.0):
         self._apply_gates = True
