@@ -1011,13 +1011,13 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         self._apply_gates = False
         
-        self.hidden_w = None
+        # self.hidden_w = None
         self.w = None
         self.num_of_heads = None
         self.temperature = None
         self._apply_dropout = False
-        self.linear = False
-        self.dense = nn.Linear(config.num_hidden_layers*config.num_attention_heads,config.num_hidden_layers*config.num_attention_heads)
+        # self.linear = False
+        # self.dense = nn.Linear(config.num_hidden_layers*config.num_attention_heads,config.num_hidden_layers*config.num_attention_heads)
         self.head_size = [config.num_hidden_layers, config.num_attention_heads]
 
         self.init_weights()
@@ -1055,10 +1055,10 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
                 gates = self.get_gate_values()
                 head_mask = gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
             else:
-                if self.linear:
-                    self.w = self.dense(self.hidden_w.view(-1)).view_as(self.hidden_w)
-                else:
-                    self.w = self.hidden_w
+                # if self.linear:
+                #     self.w = self.dense(self.hidden_w.view(-1)).view_as(self.hidden_w)
+                # else:
+                #     self.w = self.hidden_w
                 head_mask = gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
             self.apply_masks(head_mask)
 
@@ -1123,16 +1123,16 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         return torch.stack(self.bert.get_masks())
     
     def apply_dropout(self, num_of_heads, temperature, linear=False):
-        if self.hidden_w is None:
-            self.hidden_w = nn.Parameter(torch.empty(self.head_size).to(self.device))
-            nn.init.xavier_uniform_(self.hidden_w)
+        if self.w is None:
+            self.w = nn.Parameter(torch.empty(self.head_size).to(self.device))
+            nn.init.xavier_uniform_(self.w)
         self.num_of_heads = num_of_heads
         self.temperature = temperature
         self._apply_dropout = True
         self.linear = linear
 
     def get_w(self):
-        return self.w if self.w is not None else self.hidden_w
+        return self.w #if self.w is not None else self.hidden_w
 
 @add_start_docstrings(
     """Bert Model with a multiple choice classification head on top (a linear layer on top of

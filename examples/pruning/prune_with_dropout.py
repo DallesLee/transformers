@@ -162,8 +162,8 @@ def main():
     else:
         metric = "eval_acc"
 
-    for temperature in [0.0000001,0.00000001]:
-        for num_of_heads in [24]:
+    for temperature in [1e-08]:
+        for num_of_heads in [9]:
             torch.manual_seed(42)
             model = BertForSequenceClassificationConcrete.from_pretrained(
                 model_args.model_name_or_path,
@@ -179,7 +179,7 @@ def main():
                 },
                 {
                     "params": [p for n, p in model.named_parameters() if n == "w"],
-                    "lr": 5e-1,
+                    "lr": 1e-1,
                 },
             ]
             optimizer = AdamW(
