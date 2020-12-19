@@ -163,39 +163,41 @@ def main():
         metric = "eval_acc"
 
     for temperature in [1e-08]:
-        for num_of_heads in [9]:
+        for num_of_heads in [24]:
             torch.manual_seed(42)
             model = BertForSequenceClassificationConcrete.from_pretrained(
                 model_args.model_name_or_path,
                 config=config,
             )
 
-            model.apply_dropout(num_of_heads, temperature)
+            # model.apply_dropout(num_of_heads, temperature)
 
-            optimizer_grouped_parameters = [
-                {
-                    "params": [p for n, p in model.named_parameters() if n != "w"],
-                    "lr": training_args.learning_rate,
-                },
-                {
-                    "params": [p for n, p in model.named_parameters() if n == "w"],
-                    "lr": 1e-1,
-                },
-            ]
-            optimizer = AdamW(
-                optimizer_grouped_parameters,
-                betas=(0.9, 0.999),
-                eps=1e-8,
-            )
+            # optimizer_grouped_parameters = [
+            #     {
+            #         "params": [p for n, p in model.named_parameters() if n != "w"],
+            #         "lr": training_args.learning_rate,
+            #     },
+            #     {
+            #         "params": [p for n, p in model.named_parameters() if n == "w"],
+            #         "lr": lr,
+            #     },
+            # ]
+            # optimizer = AdamW(
+            #     optimizer_grouped_parameters,
+            #     betas=(0.9, 0.999),
+            #     eps=1e-8,
+            # )
 
             # Initialize our Trainer
             training_args.max_steps = -1
-            trainer = Trainer(
+            trainer = DropoutTrainer(
                 model=model,
                 args=training_args,
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
                 compute_metrics=build_compute_metrics_fn(data_args.task_name),
+                num_of_heads=num_of_heads,
+                temperature=temperature,
                 # optimizers=(optimizer, None),
             )
 

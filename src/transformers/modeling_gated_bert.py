@@ -1122,14 +1122,14 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
     def get_masks(self):
         return torch.stack(self.bert.get_masks())
     
-    def apply_dropout(self, num_of_heads, temperature, linear=False):
+    def apply_dropout(self, num_of_heads, temperature):
         if self.w is None:
             self.w = nn.Parameter(torch.empty(self.head_size).to(self.device))
             nn.init.xavier_uniform_(self.w)
         self.num_of_heads = num_of_heads
         self.temperature = temperature
         self._apply_dropout = True
-        self.linear = linear
+        # self.linear = linear
 
     def get_w(self):
         return self.w #if self.w is not None else self.hidden_w
