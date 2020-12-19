@@ -280,7 +280,6 @@ class DropoutTrainer(Trainer):
                                     * (total_num_of_heads - self.num_of_heads))
                 else:
                     num_of_heads = self.num_of_heads
-                print(num_of_heads)
                 model.apply_dropout(num_of_heads, self.temperature)
 
                 tr_loss += self.training_step(model, inputs)
