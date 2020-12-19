@@ -112,8 +112,11 @@ class DropoutTrainer(Trainer):
         tb_writer: Optional["SummaryWriter"] = None,
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
         num_of_heads: Optional[int] = 36,
+        reducing_heads: Optional[bool] = False,
         temperature: Optional[float] = 1.0,
         cooldown_steps: Optional[int] = 3000,
+        annealing: Optional[bool] = False,
+        starting_temperature: Optional[float] = 1.0,
         **kwargs,
     ):
         super().__init__(
@@ -121,8 +124,11 @@ class DropoutTrainer(Trainer):
             tb_writer, optimizers, **kwargs
         )
         self.num_of_heads = num_of_heads
+        self.reducing_heads = reducing_heads
         self.temperature = temperature
+        self.annealing = annealing
         self.cooldown_steps = cooldown_steps
+        self.starting_temperature = starting_temperature
 
     def train(self, model_path: Optional[str] = None, trial: Union["optuna.Trial", Dict[str, Any]] = None):
         """
@@ -274,13 +280,23 @@ class DropoutTrainer(Trainer):
                     epoch_pbar.update(1)
                     continue
                 
-                if t_total > self.cooldown_steps and self.global_step <= t_total - self.cooldown_steps:
+                if (self.reducing_heads and 
+                    t_total > self.cooldown_steps and self.global_step <= t_total - self.cooldown_steps):
                     num_of_heads = int(total_num_of_heads - 
                                     self.global_step / (t_total - self.cooldown_steps) 
                                     * (total_num_of_heads - self.num_of_heads))
                 else:
                     num_of_heads = self.num_of_heads
-                model.apply_dropout(num_of_heads, self.temperature)
+
+                if (self.annealing and 
+                    t_total > self.cooldown_steps and self.global_step <= t_total - self.cooldown_steps):
+                    temperature = (self.starting_temperature - 
+                                    self.global_step / (t_total - self.cooldown_steps) 
+                                    * (self.starting_temperature - self.temperature))
+                else:
+                    temperature = self.temperature
+
+                model.apply_dropout(num_of_heads, temperature)
 
                 tr_loss += self.training_step(model, inputs)
                 self.total_flos += self.floating_point_ops(inputs)

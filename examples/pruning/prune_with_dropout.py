@@ -163,7 +163,7 @@ def main():
         metric = "eval_acc"
 
     for temperature in [1e-08]:
-        for num_of_heads in [24]:
+        for num_of_heads in [9]:
             torch.manual_seed(42)
             model = BertForSequenceClassificationConcrete.from_pretrained(
                 model_args.model_name_or_path,
@@ -197,7 +197,10 @@ def main():
                 eval_dataset=eval_dataset,
                 compute_metrics=build_compute_metrics_fn(data_args.task_name),
                 num_of_heads=num_of_heads,
+                reducing_heads=True,
                 temperature=temperature,
+                cooldown_steps=2000,
+                annealing=True,
                 # optimizers=(optimizer, None),
             )
 
