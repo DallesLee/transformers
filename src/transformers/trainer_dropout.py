@@ -273,10 +273,13 @@ class DropoutTrainer(Trainer):
                     steps_trained_in_current_epoch -= 1
                     epoch_pbar.update(1)
                     continue
-
-                num_of_heads = int(total_num_of_heads - 
-                                (t_total - self.cooldown_steps - self.global_step) / (t_total - self.cooldown_steps) 
-                                * (total_num_of_heads - self.num_of_heads))
+                
+                if t_total > self.cooldown_steps and self.global_step <= t_total - self.cooldown_steps:
+                    num_of_heads = int(total_num_of_heads - 
+                                    self.global_step / (t_total - self.cooldown_steps) 
+                                    * (total_num_of_heads - self.num_of_heads))
+                else:
+                    num_of_heads = self.num_of_heads
                 print(num_of_heads)
                 model.apply_dropout(num_of_heads, self.temperature)
 
