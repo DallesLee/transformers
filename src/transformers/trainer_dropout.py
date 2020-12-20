@@ -290,9 +290,9 @@ class DropoutTrainer(Trainer):
 
                 if (self.annealing and 
                     t_total > self.cooldown_steps and self.global_step <= t_total - self.cooldown_steps):
-                    temperature = (self.starting_temperature - 
+                    temperature = np.exp(np.log(self.starting_temperature) - 
                                     self.global_step / (t_total - self.cooldown_steps) 
-                                    * (self.starting_temperature - self.temperature))
+                                    * (np.log(self.starting_temperature) - np.log(self.temperature)))
                 else:
                     temperature = self.temperature
 

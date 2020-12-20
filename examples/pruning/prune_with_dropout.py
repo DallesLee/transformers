@@ -163,67 +163,68 @@ def main():
         metric = "eval_acc"
 
     for temperature in [1e-08]:
-        for num_of_heads in [9]:
-            torch.manual_seed(42)
-            model = BertForSequenceClassificationConcrete.from_pretrained(
-                model_args.model_name_or_path,
-                config=config,
-            )
-
-            # model.apply_dropout(num_of_heads, temperature)
-
-            # optimizer_grouped_parameters = [
-            #     {
-            #         "params": [p for n, p in model.named_parameters() if n != "w"],
-            #         "lr": training_args.learning_rate,
-            #     },
-            #     {
-            #         "params": [p for n, p in model.named_parameters() if n == "w"],
-            #         "lr": lr,
-            #     },
-            # ]
-            # optimizer = AdamW(
-            #     optimizer_grouped_parameters,
-            #     betas=(0.9, 0.999),
-            #     eps=1e-8,
-            # )
-
-            # Initialize our Trainer
-            training_args.max_steps = -1
-            trainer = DropoutTrainer(
-                model=model,
-                args=training_args,
-                train_dataset=train_dataset,
-                eval_dataset=eval_dataset,
-                compute_metrics=build_compute_metrics_fn(data_args.task_name),
-                num_of_heads=num_of_heads,
-                reducing_heads=True,
-                temperature=temperature,
-                cooldown_steps=2000,
-                annealing=True,
-                # optimizers=(optimizer, None),
-            )
-
-            # Training
-            trainer.train()
-            trainer.save_model()
-            score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
-            # print_2d_tensor(head_mask)
-            logger.info("temperature: {}, num of heads: {}, accuracy: {}".format(temperature, num_of_heads, score * 100))
-
-            model._apply_dropout = False
-            for num_to_unmask in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
-                head_mask = convert_gate_to_mask(model.get_w(), num_to_unmask)
-                # print_2d_tensor(head_mask)
-                model.apply_masks(head_mask)
-                score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
-                sparsity = 100 - head_mask.sum() / head_mask.numel() * 100
-                logger.info(
-                    "Masking: current score: %f, remaining heads %d (%.1f percents)",
-                    score,
-                    head_mask.sum(),
-                    100 - sparsity,
+        for num_of_heads in [24]:
+            for cooldown_steps in [500]:
+                torch.manual_seed(42)
+                model = BertForSequenceClassificationConcrete.from_pretrained(
+                    model_args.model_name_or_path,
+                    config=config,
                 )
+
+                # model.apply_dropout(num_of_heads, temperature)
+
+                # optimizer_grouped_parameters = [
+                #     {
+                #         "params": [p for n, p in model.named_parameters() if n != "w"],
+                #         "lr": training_args.learning_rate,
+                #     },
+                #     {
+                #         "params": [p for n, p in model.named_parameters() if n == "w"],
+                #         "lr": lr,
+                #     },
+                # ]
+                # optimizer = AdamW(
+                #     optimizer_grouped_parameters,
+                #     betas=(0.9, 0.999),
+                #     eps=1e-8,
+                # )
+
+                # Initialize our Trainer
+                training_args.max_steps = -1
+                trainer = DropoutTrainer(
+                    model=model,
+                    args=training_args,
+                    train_dataset=train_dataset,
+                    eval_dataset=eval_dataset,
+                    compute_metrics=build_compute_metrics_fn(data_args.task_name),
+                    num_of_heads=num_of_heads,
+                    # reducing_heads=True,
+                    temperature=temperature,
+                    cooldown_steps=cooldown_steps,
+                    annealing=True,
+                    # optimizers=(optimizer, None),
+                )
+
+                # Training
+                trainer.train()
+                trainer.save_model()
+                score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
+                # print_2d_tensor(head_mask)
+                logger.info("temperature: {}, num of heads: {}, accuracy: {}".format(temperature, num_of_heads, score * 100))
+
+                model._apply_dropout = False
+                for num_to_unmask in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
+                    head_mask = convert_gate_to_mask(model.get_w(), num_to_unmask)
+                    # print_2d_tensor(head_mask)
+                    model.apply_masks(head_mask)
+                    score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
+                    sparsity = 100 - head_mask.sum() / head_mask.numel() * 100
+                    logger.info(
+                        "Masking: current score: %f, remaining heads %d (%.1f percents)",
+                        score,
+                        head_mask.sum(),
+                        100 - sparsity,
+                    )
     
 
 
