@@ -80,7 +80,7 @@ def train(args, model, head_mask, train_dataset, eval_dataset, epoch=1.0):
         compute_metrics=build_compute_metrics_fn(eval_dataset.args.task_name),
     )
     trainer.train()
-    score = trainer.evaluate(eval_dataset=eval_dataset)['eval_mnli/acc']
+    score = trainer.evaluate(eval_dataset=eval_dataset)["eval_" + args.metric_name]
     # logger.info("Accuracy: {}".format(score))
     return score
 

@@ -308,7 +308,7 @@ def main():
     #         args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=1
     #     )
     # for k in range(1,12):
-    for head_mask in all_head_masks[:3]
+    for head_mask in all_head_masks[:3]:
         model = BertForSequenceClassificationConcrete.from_pretrained(
             args.model_name_or_path,
             from_tf=bool(".ckpt" in args.model_name_or_path),
