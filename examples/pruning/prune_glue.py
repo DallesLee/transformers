@@ -244,7 +244,14 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(
         args.tokenizer_name if args.tokenizer_name else args.model_name_or_path, cache_dir=args.cache_dir,
     )
-
+    model = BertForSequenceClassificationConcrete.from_pretrained(
+        args.model_name_or_path,
+        from_tf=bool(".ckpt" in args.model_name_or_path),
+        config=config,
+        cache_dir=args.cache_dir,
+    )
+    model.to(args.device)
+    model.eval()
     # Print/save training arguments
     os.makedirs(args.output_dir, exist_ok=True)
     torch.save(args, os.path.join(args.output_dir, "run_args.bin"))

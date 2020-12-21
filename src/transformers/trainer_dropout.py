@@ -117,6 +117,7 @@ class DropoutTrainer(Trainer):
         cooldown_steps: Optional[int] = 3000,
         annealing: Optional[bool] = False,
         starting_temperature: Optional[float] = 1.0,
+        starting_num_of_heads: Optional[int] = 144,
         **kwargs,
     ):
         super().__init__(
@@ -129,6 +130,7 @@ class DropoutTrainer(Trainer):
         self.annealing = annealing
         self.cooldown_steps = cooldown_steps
         self.starting_temperature = starting_temperature
+        self.starting_num_of_heads = starting_num_of_heads
 
     def train(self, model_path: Optional[str] = None, trial: Union["optuna.Trial", Dict[str, Any]] = None):
         """
@@ -282,9 +284,9 @@ class DropoutTrainer(Trainer):
                 
                 if (self.reducing_heads and 
                     t_total > self.cooldown_steps and self.global_step <= t_total - self.cooldown_steps):
-                    num_of_heads = int(total_num_of_heads - 
+                    num_of_heads = int(self.starting_num_of_heads - 
                                     self.global_step / (t_total - self.cooldown_steps) 
-                                    * (total_num_of_heads - self.num_of_heads))
+                                    * (self.starting_num_of_heads - self.num_of_heads))
                 else:
                     num_of_heads = self.num_of_heads
 

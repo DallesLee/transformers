@@ -172,7 +172,7 @@ def main():
                     config=config,
                 )
 
-                model.apply_dropout(num_of_heads, temperature)
+                # model.apply_dropout(num_of_heads, temperature)
 
                 optimizer_grouped_parameters = [
                     {
