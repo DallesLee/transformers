@@ -162,7 +162,7 @@ def main():
     else:
         metric = "eval_acc"
 
-    for l0_penalty in [2.0, 5.0, 10.0, 20.0, 50.0]:
+    for l0_penalty in [100, 1000, 2000, 10000]:
         torch.manual_seed(42)
         model = BertForSequenceClassificationConcrete.from_pretrained(
             model_args.model_name_or_path,

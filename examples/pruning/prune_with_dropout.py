@@ -163,31 +163,32 @@ def main():
         metric = "eval_acc"
 
     for temperature in [1e-08]:
-        for num_of_heads in [24]:
-            for cooldown_steps in [500]:
+        for num_of_heads in [9]:
+            for cooldown_steps in [0]:
+                # logger.info("cooldown_steps: {}".format(cooldown_steps))
                 torch.manual_seed(42)
                 model = BertForSequenceClassificationConcrete.from_pretrained(
                     model_args.model_name_or_path,
                     config=config,
                 )
 
-                # model.apply_dropout(num_of_heads, temperature)
+                model.apply_dropout(num_of_heads, temperature)
 
-                # optimizer_grouped_parameters = [
-                #     {
-                #         "params": [p for n, p in model.named_parameters() if n != "w"],
-                #         "lr": training_args.learning_rate,
-                #     },
-                #     {
-                #         "params": [p for n, p in model.named_parameters() if n == "w"],
-                #         "lr": lr,
-                #     },
-                # ]
-                # optimizer = AdamW(
-                #     optimizer_grouped_parameters,
-                #     betas=(0.9, 0.999),
-                #     eps=1e-8,
-                # )
+                optimizer_grouped_parameters = [
+                    {
+                        "params": [p for n, p in model.named_parameters() if n != "w"],
+                        "lr": training_args.learning_rate,
+                    },
+                    {
+                        "params": [p for n, p in model.named_parameters() if n == "w"],
+                        "lr": 5e-1,
+                    },
+                ]
+                optimizer = AdamW(
+                    optimizer_grouped_parameters,
+                    betas=(0.9, 0.999),
+                    eps=1e-8,
+                )
 
                 # Initialize our Trainer
                 training_args.max_steps = -1
@@ -200,8 +201,8 @@ def main():
                     num_of_heads=num_of_heads,
                     # reducing_heads=True,
                     temperature=temperature,
-                    cooldown_steps=cooldown_steps,
-                    annealing=True,
+                    # cooldown_steps=cooldown_steps,
+                    # annealing=True,
                     # optimizers=(optimizer, None),
                 )
 
@@ -209,11 +210,14 @@ def main():
                 trainer.train()
                 trainer.save_model()
                 score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
-                # print_2d_tensor(head_mask)
+                print_2d_tensor(model.get_w())
                 logger.info("temperature: {}, num of heads: {}, accuracy: {}".format(temperature, num_of_heads, score * 100))
 
                 model._apply_dropout = False
-                for num_to_unmask in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
+                list_of_nums = [12, 24, 36]
+                if num_of_heads not in list_of_nums:
+                    list_of_nums.insert(0, num_of_heads)
+                for num_to_unmask in list_of_nums:
                     head_mask = convert_gate_to_mask(model.get_w(), num_to_unmask)
                     # print_2d_tensor(head_mask)
                     model.apply_masks(head_mask)

@@ -80,8 +80,8 @@ def train(args, model, head_mask, train_dataset, eval_dataset, epoch=1.0):
         compute_metrics=build_compute_metrics_fn(eval_dataset.args.task_name),
     )
     trainer.train()
-    score = trainer.evaluate(eval_dataset=eval_dataset)['eval_acc']
-    logger.info("Accuracy: {}".format(score))
+    score = trainer.evaluate(eval_dataset=eval_dataset)['eval_mnli/acc']
+    # logger.info("Accuracy: {}".format(score))
     return score
 
 def dropout_train(args, model, train_dataset, eval_dataset, num_to_mask=36, epoch=3):
