@@ -255,8 +255,6 @@ class DropoutTrainer(Trainer):
         logging_loss_scalar = 0.0
         model.zero_grad()
 
-        total_num_of_heads = model.head_size[0] * model.head_size[1]
-
         disable_tqdm = self.args.disable_tqdm or not self.is_local_process_zero()
         train_pbar = trange(epochs_trained, int(np.ceil(num_train_epochs)), desc="Epoch", disable=disable_tqdm)
         for epoch in range(epochs_trained, int(np.ceil(num_train_epochs))):
