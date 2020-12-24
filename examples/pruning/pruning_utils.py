@@ -520,7 +520,7 @@ def unmask_heads(
 
     sparsities.append(100)
     scores.append(current_score * 100)
-    all_head_masks.append(new_head_mask.data)
+    all_head_masks.append(new_head_mask.clone())
 
     step = 0
 
@@ -554,7 +554,7 @@ def unmask_heads(
         sparsity = 100 - new_head_mask.sum() / new_head_mask.numel() * 100
         scores.append(current_score * 100)
         sparsities.append(sparsity)
-        all_head_masks.append(new_head_mask.data)
+        all_head_masks.append(new_head_mask.clone())
 
         logger.info(
             "Masking: current score: %f, remaning heads %d (%.1f percents)",

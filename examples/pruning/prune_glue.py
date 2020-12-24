@@ -315,7 +315,7 @@ def main():
     #         args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=1
     #     )
     # for k in range(1,12):
-    for head_mask in all_head_masks[:3]:
+    for head_mask in all_head_masks:
         model = BertForSequenceClassificationConcrete.from_pretrained(
             args.model_name_or_path,
             from_tf=bool(".ckpt" in args.model_name_or_path),
@@ -340,10 +340,9 @@ def main():
         # )
         score = train(args, model, head_mask, train_dataset, eval_dataset, epoch=3.0)
         logger.info(
-            "Current score: %f, remaining heads %d (%.1f percents)",
+            "Current score: %f, remaining heads %d",
             score,
             head_mask.sum(),
-            100 - sparsity,
         )
         # scores.append(score)
         # sparsities.append(sparisity)

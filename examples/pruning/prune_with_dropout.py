@@ -163,16 +163,16 @@ def main():
         metric = "eval_acc"
 
     for temperature in [1e-08]:
-        for num_of_heads in [9]:
+        for num_of_heads in [12]:
             for cooldown_steps in [0]:
-                # logger.info("cooldown_steps: {}".format(cooldown_steps))
+                logger.info("cooldown_steps: {}".format(cooldown_steps))
                 torch.manual_seed(42)
                 model = BertForSequenceClassificationConcrete.from_pretrained(
                     model_args.model_name_or_path,
                     config=config,
                 )
 
-                # model.apply_dropout(num_of_heads, temperature)
+                model.apply_dropout(num_of_heads, temperature)
 
                 optimizer_grouped_parameters = [
                     {
@@ -192,22 +192,23 @@ def main():
 
                 # Initialize our Trainer
                 training_args.max_steps = -1
-                trainer = DropoutTrainer(
-                    model=model,
-                    args=training_args,
-                    train_dataset=train_dataset,
-                    eval_dataset=eval_dataset,
-                    compute_metrics=build_compute_metrics_fn(data_args.task_name),
-                    num_of_heads=num_of_heads,
-                    # reducing_heads=True,
-                    temperature=temperature,
-                    # cooldown_steps=cooldown_steps,
-                    # annealing=True,
-                    # optimizers=(optimizer, None),
-                )
+                with torch.autograd.detect_anomaly():
+                    trainer = DropoutTrainer(
+                        model=model,
+                        args=training_args,
+                        train_dataset=train_dataset,
+                        eval_dataset=eval_dataset,
+                        compute_metrics=build_compute_metrics_fn(data_args.task_name),
+                        num_of_heads=num_of_heads,
+                        reducing_heads=True,
+                        temperature=temperature,
+                        cooldown_steps=cooldown_steps,
+                        annealing=True,
+                        optimizers=(optimizer, None),
+                    )
 
-                # Training
-                trainer.train()
+                    # Training
+                    trainer.train()
                 trainer.save_model()
                 score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
                 print_2d_tensor(model.get_w())
