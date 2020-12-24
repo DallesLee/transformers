@@ -1019,6 +1019,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         # self.linear = False
         # self.dense = nn.Linear(config.num_hidden_layers*config.num_attention_heads,config.num_hidden_layers*config.num_attention_heads)
         self.head_size = [config.num_hidden_layers, config.num_attention_heads]
+        self.double = False
 
         self.init_weights()
 
@@ -1053,13 +1054,13 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         if self._apply_dropout:
             if self._apply_gates:
                 gates = self.get_gate_values()
-                head_mask = gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
+                head_mask = gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature, self.double).view_as(gates)
             else:
                 # if self.linear:
                 #     self.w = self.dense(self.hidden_w.view(-1)).view_as(self.hidden_w)
                 # else:
                 #     self.w = self.hidden_w
-                head_mask = gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
+                head_mask = gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature, self.double).view_as(self.w)
             self.apply_masks(head_mask)
 
         outputs = self.bert(
@@ -1122,13 +1123,14 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
     def get_masks(self):
         return torch.stack(self.bert.get_masks())
     
-    def apply_dropout(self, num_of_heads, temperature):
+    def apply_dropout(self, num_of_heads, temperature, double=False):
         if self.w is None:
             self.w = nn.Parameter(torch.empty(self.head_size).to(self.device))
             nn.init.xavier_uniform_(self.w)
         self.num_of_heads = num_of_heads
         self.temperature = temperature
         self._apply_dropout = True
+        self.double = double
         # self.linear = linear
 
     def get_w(self):
@@ -1536,13 +1538,14 @@ class BertForQuestionAnsweringConcrete(BertPreTrainedModel):
     def get_masks(self):
         return self.bert.get_masks()
 
-    def apply_dropout(self, num_of_heads, temperature):
+    def apply_dropout(self, num_of_heads, temperature, double=False):
         if self.w is None:
             self.w = nn.Parameter(torch.empty(self.head_size).to(self.device))
             nn.init.xavier_uniform_(self.w)
         self.num_of_heads = num_of_heads
         self.temperature = temperature
         self._apply_dropout = True
+        self.double = double
 
     def get_w(self):
         return self.w
