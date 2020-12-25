@@ -196,27 +196,26 @@ def main():
                         )
 
                         # Initialize our Trainer
-                        with torch.autograd.detect_anomaly():
-                            training_args.max_steps = -1
-                            trainer = DropoutTrainer(
-                                model=model,
-                                args=training_args,
-                                train_dataset=train_dataset,
-                                eval_dataset=eval_dataset,
-                                compute_metrics=build_compute_metrics_fn(data_args.task_name),
-                                num_of_heads=num_of_heads,
-                                reducing_heads=True,
-                                temperature=temperature,
-                                cooldown_steps=cooldown_steps,
-                                annealing=True,
-                                starting_temperature=starting_temperature,
-                                starting_num_of_heads=starting_num_of_heads,
-                                optimizers=(optimizer, None),
-                                double=True,
-                            )
+                        training_args.max_steps = -1
+                        trainer = DropoutTrainer(
+                            model=model,
+                            args=training_args,
+                            train_dataset=train_dataset,
+                            eval_dataset=eval_dataset,
+                            compute_metrics=build_compute_metrics_fn(data_args.task_name),
+                            num_of_heads=num_of_heads,
+                            reducing_heads=True,
+                            temperature=temperature,
+                            cooldown_steps=cooldown_steps,
+                            annealing=True,
+                            starting_temperature=starting_temperature,
+                            starting_num_of_heads=starting_num_of_heads,
+                            optimizers=(optimizer, None),
+                            double=True,
+                        )
 
-                            # Training
-                            trainer.train()
+                        # Training
+                        trainer.train()
                         trainer.save_model()
                         score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
                         print_2d_tensor(model.get_w())
