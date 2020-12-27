@@ -162,14 +162,18 @@ def main():
     else:
         metric = "eval_acc"
 
+    annealing = True
+    reducing_heads = False
     for temperature in [1e-08]:
-        for num_of_heads in [12]:
-            for cooldown_steps in [10000]:
+        for num_of_heads in [9]:
+            for cooldown_steps in [11000, 12000, 15000, 20000]:
                 for starting_temperature in [1.0]:
-                    for starting_num_of_heads in [72]:
+                    for starting_num_of_heads in [36]:
                         logger.info(
                             "cooldown_steps: {}, starting_temperature: {}, starting_num_of_heads: {}".format(
-                                cooldown_steps, starting_temperature, starting_num_of_heads,
+                                cooldown_steps if annealing or reducing_heads else "N.A.", 
+                                starting_temperature if annealing else "N.A.", 
+                                starting_num_of_heads if reducing_heads else "N.A.",
                         ))
                         torch.manual_seed(42)
                         model = BertForSequenceClassificationConcrete.from_pretrained(
@@ -204,14 +208,14 @@ def main():
                             eval_dataset=eval_dataset,
                             compute_metrics=build_compute_metrics_fn(data_args.task_name),
                             num_of_heads=num_of_heads,
-                            reducing_heads=True,
+                            reducing_heads=reducing_heads,
                             temperature=temperature,
                             cooldown_steps=cooldown_steps,
-                            annealing=True,
+                            annealing=annealing,
                             starting_temperature=starting_temperature,
                             starting_num_of_heads=starting_num_of_heads,
                             optimizers=(optimizer, None),
-                            double=True,
+                            # double=True,
                         )
 
                         # Training
