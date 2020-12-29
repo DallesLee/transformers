@@ -38,7 +38,7 @@ class ConcreteGate(nn.Module):
         low, high = self.stretch_limits
         if is_train:
             shape = self.log_a.size()
-            noise = torch.rand(shape).to(self.log_a.device)
+            noise = (1 - 2*self.eps) * torch.rand(shape).to(self.log_a.device) + self.eps
             concrete = torch.sigmoid((torch.log(noise) - torch.log(1 - noise) + self.log_a) / self.temperature)
         else:
             concrete = torch.sigmoid(self.log_a)

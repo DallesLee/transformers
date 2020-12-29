@@ -165,10 +165,10 @@ def main():
     annealing = True
     reducing_heads = False
     for temperature in [1e-08]:
-        for num_of_heads in [9]:
-            for cooldown_steps in [11000, 12000, 15000, 20000]:
+        for num_of_heads in [8, 9, 12, 24, 36]:
+            for cooldown_steps in [10000]:
                 for starting_temperature in [1.0]:
-                    for starting_num_of_heads in [36]:
+                    for starting_num_of_heads in [72]:
                         logger.info(
                             "cooldown_steps: {}, starting_temperature: {}, starting_num_of_heads: {}".format(
                                 cooldown_steps if annealing or reducing_heads else "N.A.", 
