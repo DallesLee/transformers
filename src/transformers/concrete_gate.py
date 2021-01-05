@@ -88,8 +88,7 @@ def gumbel_soft_top_k(w, k, t, double=False):
 
     p[0] = torch.exp(nn.functional.log_softmax(r / t, 0))
     for j in range(1,k):
-        # r += torch.log(torch.max(1-p[j-1], epsilon))
-        r += torch.log(1-p[j-1])
+        r += torch.log(torch.max(1-p[j-1], epsilon))
         p[j] = torch.exp(nn.functional.log_softmax(r / t, 0))
         
     return p.sum(0)
