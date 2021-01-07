@@ -169,7 +169,7 @@ def main():
             for cooldown_steps in [10000]:
                 for starting_temperature in [1.0]:
                     for starting_num_of_heads in [60]:
-                        for lr in [5e-1]:
+                        for lr in [3e-1]:
                             logger.info(
                                 "cooldown_steps: {}, starting_temperature: {}, starting_num_of_heads: {}, learning_rate: {}".format(
                                     cooldown_steps if annealing or reducing_heads else "N.A.", 
