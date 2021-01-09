@@ -282,21 +282,24 @@ class DropoutTrainer(Trainer):
                     epoch_pbar.update(1)
                     continue
                 
-                if (self.reducing_heads and 
-                    t_total > self.cooldown_steps and self.global_step <= t_total - self.cooldown_steps):
+                if (self.reducing_heads and self.global_step <= self.cooldown_steps):
                     num_of_heads = int(self.starting_num_of_heads - 
-                                    self.global_step / (t_total - self.cooldown_steps) 
+                                    self.global_step / self.cooldown_steps
                                     * (self.starting_num_of_heads - self.num_of_heads))
                 else:
                     num_of_heads = self.num_of_heads
+                print("num of heads: {}".format(num_of_heads))
 
-                if (self.annealing and 
-                    t_total > self.cooldown_steps and self.global_step <= t_total - self.cooldown_steps):
+                if (self.annealing and self.global_step <= self.cooldown_steps):
                     temperature = np.exp(np.log(self.starting_temperature) - 
-                                    self.global_step / (t_total - self.cooldown_steps) 
+                                    self.global_step / self.cooldown_steps
                                     * (np.log(self.starting_temperature) - np.log(self.temperature)))
                 else:
                     temperature = self.temperature
+                print("temperature: {}".format(temperature))
+
+                if (self.reducing_heads or self.annealing) and t_total < self.cooldown_steps:
+                    warnings.warn("It never cools down!!!")
 
                 model.apply_dropout(num_of_heads, temperature, self.double)
 
