@@ -166,8 +166,8 @@ def main():
     reducing_heads = False
     for temperature in [1e-08]:
         for num_of_heads in [12]:
-            for cooldown_steps in [10000, 20000, 30000, 40000]:
-                for starting_temperature in [1.0]:
+            for cooldown_steps in [15000]:
+                for starting_temperature in [1e4]:
                     for starting_num_of_heads in [144]:
                         for lr in [2e-1]:
                             logger.info(
@@ -221,14 +221,15 @@ def main():
                             )
 
                             # Training
-                            trainer.train()
+                            with torch.autograd.detect_anomaly():
+                                trainer.train()
                             trainer.save_model()
                             score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
                             print_2d_tensor(model.get_w())
                             logger.info("temperature: {}, num of heads: {}, accuracy: {}".format(temperature, num_of_heads, score * 100))
 
                             model._apply_dropout = False
-                            list_of_nums = [12, 24, 36]
+                            list_of_nums = []
                             if num_of_heads not in list_of_nums:
                                 list_of_nums.insert(0, num_of_heads)
                             for num_to_unmask in sorted(list_of_nums):

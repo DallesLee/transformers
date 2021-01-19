@@ -162,7 +162,7 @@ def main():
     else:
         metric = "eval_acc"
 
-    for l0_penalty in [0.0003, 0.0005, 0.0008, 0.002, 0.003, 0.004, 0.007, 0.01]:
+    for l0_penalty in [0.005]:
         torch.manual_seed(42)
         model = BertForSequenceClassificationConcrete.from_pretrained(
             model_args.model_name_or_path,
@@ -223,18 +223,18 @@ def main():
         # print_2d_tensor(head_mask)
         logger.info("lambda: {}, remaining heads: {}, accuracy: {}".format(l0_penalty, head_mask.sum(), score * 100))
 
-        for num_to_mask in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
-            head_mask = convert_gate_to_mask(gates, num_to_mask)
-            # print_2d_tensor(head_mask)
-            model.apply_masks(head_mask)
-            score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
-            sparsity = 100 - head_mask.sum() / head_mask.numel() * 100
-            logger.info(
-                "Masking: current score: %f, remaining heads %d (%.1f percents)",
-                score,
-                head_mask.sum(),
-                100 - sparsity,
-            )
+        # for num_to_mask in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
+        #     head_mask = convert_gate_to_mask(gates, num_to_mask)
+        #     # print_2d_tensor(head_mask)
+        #     model.apply_masks(head_mask)
+        #     score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
+        #     sparsity = 100 - head_mask.sum() / head_mask.numel() * 100
+        #     logger.info(
+        #         "Masking: current score: %f, remaining heads %d (%.1f percents)",
+        #         score,
+        #         head_mask.sum(),
+        #         100 - sparsity,
+        #     )
 
 
     
