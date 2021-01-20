@@ -328,7 +328,7 @@ class DropoutTrainer(Trainer):
                     else:
                         self.optimizer.step()
 
-                    if any(torch.isnan(model.get_w())):
+                    if any(torch.isnan(model.get_w()).view(-1)):
                         print("grad", model.get_w().grad)
                         print("w", model.get_w())
                         print("prev w", prev_w)
