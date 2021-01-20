@@ -19,6 +19,7 @@
 import dataclasses
 import logging
 import os
+import shutil
 import sys
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Optional
@@ -162,7 +163,9 @@ def main():
     else:
         metric = "eval_acc"
 
-    for l0_penalty in [0.001]:
+    for l0_penalty in [0.002, 0.003, 0.005, 0.008]:
+        if os.path.exists(training_args.output_dir):
+            shutil.rmtree(training_args.output_dir)
         torch.manual_seed(42)
         model = BertForSequenceClassificationConcrete.from_pretrained(
             model_args.model_name_or_path,
