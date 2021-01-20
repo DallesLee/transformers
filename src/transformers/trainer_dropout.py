@@ -304,6 +304,7 @@ class DropoutTrainer(Trainer):
                 model.apply_dropout(num_of_heads, temperature, self.double)
 
                 tr_loss += self.training_step(model, inputs)
+                prev_w = model.get_w()
                 self.total_flos += self.floating_point_ops(inputs)
 
                 if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
@@ -326,6 +327,11 @@ class DropoutTrainer(Trainer):
                         self.scaler.update()
                     else:
                         self.optimizer.step()
+
+                    if any(torch.isnan(model.get_w())):
+                        print("grad", model.get_w().grad)
+                        print("w", model.get_w())
+                        print("prev w", prev_w)
 
                     self.lr_scheduler.step()
                     model.zero_grad()
