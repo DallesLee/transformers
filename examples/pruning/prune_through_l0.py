@@ -163,7 +163,7 @@ def main():
     else:
         metric = "eval_acc"
 
-    for l0_penalty in [0.002, 0.003, 0.005, 0.008]:
+    for l0_penalty in [0.0012, 0.0015, 0.0018, 0.002]:
         if os.path.exists(training_args.output_dir):
             shutil.rmtree(training_args.output_dir)
         torch.manual_seed(42)
