@@ -218,8 +218,7 @@ def main():
                             )
 
                             # Training
-                            with torch.autograd.detect_anomaly():
-                                trainer.train()
+                            trainer.train()
                             trainer.save_model()
                             score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
                             print_2d_tensor(model.get_w())
