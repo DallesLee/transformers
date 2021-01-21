@@ -1012,7 +1012,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         self._apply_gates = False
         
         # self.hidden_w = None
-        self.w = nn.Parameter(torch.empty(self.head_size).double()
+        self.w = nn.Parameter(torch.empty(self.head_size).double())
         nn.init.xavier_uniform_(self.w)
         self.num_of_heads = None
         self.temperature = None
