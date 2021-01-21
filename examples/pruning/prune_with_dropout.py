@@ -217,7 +217,6 @@ def main():
                                 starting_temperature=starting_temperature,
                                 starting_num_of_heads=starting_num_of_heads,
                                 optimizers=(optimizer, None),
-                                double=True,
                             )
 
                             # Training

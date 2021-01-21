@@ -67,24 +67,17 @@ class ConcreteGate(nn.Module):
         is_nonzero = self.get_gates(False) == 0.0
         return torch.mean(is_nonzero.float())
 
-EPSILON = np.finfo(np.float32).tiny
+EPSILON = torch.finfo(torch.double).tiny
 
-def gumbel_soft_top_k(w, k, t, double=False):
+def gumbel_soft_top_k(w, k, t):
     # apply gumbel noise
-
     u = torch.rand_like(w) * (1-EPSILON) + EPSILON
     r = -torch.log(-torch.log(u)) + w
     epsilon = torch.ones_like(r)
     epsilon *= EPSILON
 
     # soft top k
-    p = torch.zeros([k, w.size()[0]]).to(w.device)
-
-    if double:
-        u = u.double()
-        r = r.double()
-        epsilon = epsilon.double()
-        p = p.double()
+    p = torch.zeros([k, w.size()[0]]).to(w.device).double()
 
     p[0] = torch.exp(nn.functional.log_softmax(r / t, 0))
     if any(torch.isnan(p[0])):
