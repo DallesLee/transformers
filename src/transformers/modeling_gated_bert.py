@@ -1059,9 +1059,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
                 #     self.w = self.dense(self.hidden_w.view(-1)).view_as(self.hidden_w)
                 # else:
                 #     self.w = self.hidden_w
-                print("w before gumbel", self.w)
                 head_mask = gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
-                print("head_mask", head_mask)
             self.apply_masks(head_mask)
 
         outputs = self.bert(

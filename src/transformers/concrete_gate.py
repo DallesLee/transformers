@@ -80,8 +80,6 @@ def gumbel_soft_top_k(w, k, t):
     p = torch.zeros([k, w.size()[0]]).to(w.device).double()
 
     p[0] = torch.exp(nn.functional.log_softmax(r / t, 0))
-    if any(torch.isnan(p[0])):
-        print("w", w)
     # p[0] = torch.softmax(r / t, 0)
     for j in range(1,k):
         r += torch.log(torch.max(1-p[j-1], epsilon))
