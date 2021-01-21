@@ -1012,14 +1012,13 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         self._apply_gates = False
         
         # self.hidden_w = None
-        self.w = nn.Parameter(torch.empty(self.head_size).double())
+        self.w = nn.Parameter(torch.empty([config.num_hidden_layers, config.num_attention_heads]).double())
         nn.init.xavier_uniform_(self.w)
         self.num_of_heads = None
         self.temperature = None
         self._apply_dropout = False
         # self.linear = False
         # self.dense = nn.Linear(config.num_hidden_layers*config.num_attention_heads,config.num_hidden_layers*config.num_attention_heads)
-        self.head_size = [config.num_hidden_layers, config.num_attention_heads]
 
         self.init_weights()
 
