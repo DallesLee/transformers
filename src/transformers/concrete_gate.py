@@ -69,12 +69,29 @@ class ConcreteGate(nn.Module):
 
 EPSILON = torch.finfo(torch.double).tiny
 
+# def gumbel_soft_top_k(w, k, t):
+#     # apply gumbel noise
+#     u = torch.rand_like(w) * (1-EPSILON) + EPSILON
+#     r = -torch.log(-torch.log(u)) + w
+#     epsilon = torch.ones_like(r)
+#     epsilon *= EPSILON
+
+#     # soft top k
+#     p = torch.zeros([k, w.size()[0]]).to(w.device).double()
+
+#     p[0] = torch.exp(nn.functional.log_softmax(r / t, 0))
+#     # p[0] = torch.softmax(r / t, 0)
+#     for j in range(1,k):
+#         r += torch.log(torch.max(1-p[j-1], epsilon))
+#         p[j] = torch.exp(nn.functional.log_softmax(r / t, 0))
+#         # p[j] = torch.softmax(r / t, 0)
+        
+#     return p.sum(0)
+
 def gumbel_soft_top_k(w, k, t):
     # apply gumbel noise
     u = torch.rand_like(w) * (1-EPSILON) + EPSILON
     r = -torch.log(-torch.log(u)) + w
-    epsilon = torch.ones_like(r)
-    epsilon *= EPSILON
 
     # soft top k
     p = torch.zeros([k, w.size()[0]]).to(w.device).double()
@@ -82,7 +99,9 @@ def gumbel_soft_top_k(w, k, t):
     p[0] = torch.exp(nn.functional.log_softmax(r / t, 0))
     # p[0] = torch.softmax(r / t, 0)
     for j in range(1,k):
-        r += torch.log(torch.max(1-p[j-1], epsilon))
+        delta = torch.log(1-p[j-1])
+        delta[delta == '-inf'] = -10000
+        r += delta
         p[j] = torch.exp(nn.functional.log_softmax(r / t, 0))
         # p[j] = torch.softmax(r / t, 0)
         
