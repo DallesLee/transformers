@@ -109,13 +109,13 @@ def main():
     except KeyError:
         raise ValueError("Task not found: %s" % (data_args.task_name))
 
-    def convert_gate_to_mask(gates, num_to_mask=None):
-        if num_to_mask is not None:
-            head_mask = torch.ones_like(gates)
-            current_heads_to_mask = gates.view(-1).sort()[1]
-            current_heads_to_mask = current_heads_to_mask[:num_to_mask]
+    def convert_gate_to_mask(gates, num_of_heads=None):
+        if num_of_heads is not None:
+            head_mask = torch.zeros_like(gates)
+            current_heads_to_keep = gates.view(-1).sort(descending = True)[1]
+            current_heads_to_keep = current_heads_to_keep[:num_of_heads]
             head_mask = head_mask.view(-1)
-            head_mask[current_heads_to_mask] = 0.0
+            head_mask[current_heads_to_keep] = 1.0
             head_mask = head_mask.view_as(gates)
         else:
             head_mask = (gates > 0.5).float()
@@ -152,18 +152,27 @@ def main():
     train_dataset = (
         GlueDataset(data_args, tokenizer=tokenizer, cache_dir=model_args.cache_dir) if training_args.do_train else None
     )
-    eval_dataset = (
-        GlueDataset(data_args, tokenizer=tokenizer, mode="dev", cache_dir=model_args.cache_dir)
-        if training_args.do_eval
-        else None
-    )
+    if data_args.task_name == "mnli":
+        data_args.task_name="mnli-mm"
+        eval_dataset = (
+            GlueDataset(data_args, tokenizer=tokenizer, mode="dev", cache_dir=model_args.cache_dir)
+            if training_args.do_eval
+            else None
+        )
+        data_args.task_name = "mnli"
+    else:
+        eval_dataset = (
+            GlueDataset(data_args, tokenizer=tokenizer, mode="dev", cache_dir=model_args.cache_dir)
+            if training_args.do_eval
+            else None
+        )
 
     if data_args.task_name == "mnli":
         metric = "eval_mnli/acc"
     else:
         metric = "eval_acc"
 
-    for l0_penalty in [0.0001, 0.0002, 0.0003, 0.0005, 0.0008]:
+    for l0_penalty in [0.0022, 0.002, 0.0018, 0.0015, 0.0012, 0.001]:
         if os.path.exists(training_args.output_dir):
             shutil.rmtree(training_args.output_dir)
         torch.manual_seed(42)
@@ -226,18 +235,22 @@ def main():
         # print_2d_tensor(head_mask)
         logger.info("lambda: {}, remaining heads: {}, accuracy: {}".format(l0_penalty, head_mask.sum(), score * 100))
 
-        # for num_to_mask in [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]:
-        #     head_mask = convert_gate_to_mask(gates, num_to_mask)
-        #     # print_2d_tensor(head_mask)
-        #     model.apply_masks(head_mask)
-        #     score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
-        #     sparsity = 100 - head_mask.sum() / head_mask.numel() * 100
-        #     logger.info(
-        #         "Masking: current score: %f, remaining heads %d (%.1f percents)",
-        #         score,
-        #         head_mask.sum(),
-        #         100 - sparsity,
-        #     )
+        if head_mask.sum() <= 12:
+            list_of_nums = list(range(1,13))
+        else:
+            list_of_nums = [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]
+        for num_to_unmask in list_of_nums:
+            head_mask = convert_gate_to_mask(gates, num_to_unmask)
+            # print_2d_tensor(head_mask)
+            model.apply_masks(head_mask)
+            score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
+            sparsity = 100 - head_mask.sum() / head_mask.numel() * 100
+            logger.info(
+                "Masking: current score: %f, remaining heads %d (%.1f percents)",
+                score,
+                head_mask.sum(),
+                100 - sparsity,
+            )
 
 
     

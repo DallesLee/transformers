@@ -151,25 +151,35 @@ def main():
     train_dataset = (
         GlueDataset(data_args, tokenizer=tokenizer, cache_dir=model_args.cache_dir) if training_args.do_train else None
     )
-    eval_dataset = (
-        GlueDataset(data_args, tokenizer=tokenizer, mode="dev", cache_dir=model_args.cache_dir)
-        if training_args.do_eval
-        else None
-    )
+    if data_args.task_name == "mnli":
+        data_args.task_name="mnli-mm"
+        eval_dataset = (
+            GlueDataset(data_args, tokenizer=tokenizer, mode="dev", cache_dir=model_args.cache_dir)
+            if training_args.do_eval
+            else None
+        )
+        data_args.task_name = "mnli"
+    else:
+        eval_dataset = (
+            GlueDataset(data_args, tokenizer=tokenizer, mode="dev", cache_dir=model_args.cache_dir)
+            if training_args.do_eval
+            else None
+        )
+
 
     if data_args.task_name == "mnli":
         metric = "eval_mnli/acc"
     else:
         metric = "eval_acc"
 
-    annealing = True
+    annealing = False
     reducing_heads = False
-    for temperature in [1e-08]:
-        for num_of_heads in [12]:
-            for cooldown_steps in [15000]:
-                for starting_temperature in [1e4]:
+    for temperature in [1e-8]:
+        for num_of_heads in [132, 120, 108, 96, 84, 72]:
+            for cooldown_steps in [25000]:
+                for starting_temperature in [1e3]:
                     for starting_num_of_heads in [144]:
-                        for lr in [2e-1]:
+                        for lr in [0.5]:
                             logger.info(
                                 "cooldown_steps: {}, starting_temperature: {}, starting_num_of_heads: {}, learning_rate: {}".format(
                                     cooldown_steps if annealing or reducing_heads else "N.A.", 

@@ -259,23 +259,17 @@ def main():
 
     # Prepare dataset for the GLUE task
     train_dataset = GlueDataset(args, tokenizer=tokenizer)
-    split = int(len(train_dataset) * 0.9)
     train_sampler = SequentialSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(
         train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
     )
-    val_dataset = Subset(train_dataset, list(range(split, len(train_dataset))))
-    val_sampler = SequentialSampler(val_dataset) if args.local_rank == -1 else DistributedSampler(val_dataset)
-    val_dataloader = DataLoader(
-        val_dataset, sampler=val_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
-    )
 
-    # if args.task_name == "mnli":
-    #     args.task_name="mnli-mm"
-    #     eval_dataset = GlueDataset(args, tokenizer=tokenizer, mode="dev")
-    #     args.task_name = "mnli"
-    # else:
-    eval_dataset = GlueDataset(args, tokenizer=tokenizer, mode="dev")
+    if args.task_name == "mnli":
+        args.task_name="mnli-mm"
+        eval_dataset = GlueDataset(args, tokenizer=tokenizer, mode="dev")
+        args.task_name = "mnli"
+    else:
+        eval_dataset = GlueDataset(args, tokenizer=tokenizer, mode="dev")
     if args.data_subset > 0:
         eval_dataset = Subset(eval_dataset, list(range(min(args.data_subset, len(eval_dataset)))))
     eval_sampler = SequentialSampler(eval_dataset) if args.local_rank == -1 else DistributedSampler(eval_dataset)
@@ -315,35 +309,35 @@ def main():
     #         args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=1
     #     )
     # for k in range(1,12):
-    for head_mask in all_head_masks:
-        model = BertForSequenceClassificationConcrete.from_pretrained(
-            args.model_name_or_path,
-            from_tf=bool(".ckpt" in args.model_name_or_path),
-            config=config,
-            cache_dir=args.cache_dir,
-        )
+    # for head_mask in all_head_masks:
+    #     model = BertForSequenceClassificationConcrete.from_pretrained(
+    #         args.model_name_or_path,
+    #         from_tf=bool(".ckpt" in args.model_name_or_path),
+    #         config=config,
+    #         cache_dir=args.cache_dir,
+    #     )
         # model.eval()
 
         # Distributed and parallel training
-        model.to(args.device)
-        if args.local_rank != -1:
-            model = torch.nn.parallel.DistributedDataParallel(
-                model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=True
-            )
-        elif args.n_gpu > 1:
-            model = torch.nn.DataParallel(model)
+        # model.to(args.device)
+        # if args.local_rank != -1:
+        #     model = torch.nn.parallel.DistributedDataParallel(
+        #         model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=True
+        #     )
+        # elif args.n_gpu > 1:
+        #     model = torch.nn.DataParallel(model)
         # score, sparisity, head_mask = gibbs_sampling(
         #     args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=1, annealing=False
         # )
         # score, sparsity, head_mask = random_sampling(
         #     args, model, eval_dataloader, val_dataloader, early_stop_step=36, K=k, n_groups=1
         # )
-        score = train(args, model, head_mask, train_dataset, eval_dataset, epoch=3.0)
-        logger.info(
-            "Current score: %f, remaining heads %d",
-            score,
-            head_mask.sum(),
-        )
+        # score = train(args, model, head_mask, train_dataset, eval_dataset, epoch=3.0)
+        # logger.info(
+        #     "Current score: %f, remaining heads %d",
+        #     score,
+        #     head_mask.sum(),
+        # )
         # scores.append(score)
         # sparsities.append(sparisity)
         # all_head_masks.append(head_mask)
