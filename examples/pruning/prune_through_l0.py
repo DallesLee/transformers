@@ -172,7 +172,7 @@ def main():
     else:
         metric = "eval_acc"
 
-    for l0_penalty in [0.0022, 0.002, 0.0018, 0.0015, 0.0012, 0.001]:
+    for l0_penalty in [0.01, 0.02, 0.05, 0.1, 0.2, 0.5]:
         if os.path.exists(training_args.output_dir):
             shutil.rmtree(training_args.output_dir)
         torch.manual_seed(42)
@@ -183,21 +183,25 @@ def main():
 
         model.apply_gates(l0_penalty)
 
-        optimizer_grouped_parameters = [
-            {
-                "params": [p for n, p in model.named_parameters() if not "log_a" in n],
-                "lr": training_args.learning_rate,
-            },
-            {
-                "params": [p for n, p in model.named_parameters() if "log_a" in n],
-                "lr": 1e-1,
-            },
-        ]
-        optimizer = AdamW(
-            optimizer_grouped_parameters,
-            betas=(0.9, 0.999),
-            eps=1e-8,
-        )
+        # for n, p in model.named_parameters():
+        #     if not "log_a" in n:
+        #         p.requires_grad = False
+
+        # optimizer_grouped_parameters = [
+        #     {
+        #         "params": [p for n, p in model.named_parameters() if not "log_a" in n],
+        #         "lr": training_args.learning_rate,
+        #     },
+        #     {
+        #         "params": [p for n, p in model.named_parameters() if "log_a" in n],
+        #         "lr": 1e-1,
+        #     },
+        # ]
+        # optimizer = AdamW(
+        #     optimizer_grouped_parameters,
+        #     betas=(0.9, 0.999),
+        #     eps=1e-8,
+        # )
 
         # Initialize our Trainer
         training_args.max_steps = -1
@@ -207,7 +211,7 @@ def main():
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             compute_metrics=build_compute_metrics_fn(data_args.task_name),
-            optimizers=(optimizer, None)
+            # optimizers=(optimizer, None)
         )
 
         # Training

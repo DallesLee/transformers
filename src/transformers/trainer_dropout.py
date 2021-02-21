@@ -386,6 +386,9 @@ class DropoutTrainer(Trainer):
                 epoch_pbar.update(1)
                 if self.args.max_steps > 0 and self.global_step >= self.args.max_steps:
                     break
+
+                if self.global_step % 10000 == 0 or self.global_step == t_total:
+                    torch.save(model.get_masks(), "head_mask/mask" + self.global_step + ".pt")
             epoch_pbar.close()
             train_pbar.update(1)
             if self.args.tpu_metrics_debug or self.args.debug:

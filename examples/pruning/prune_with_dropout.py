@@ -175,23 +175,29 @@ def main():
     annealing = False
     reducing_heads = False
     for temperature in [1e-8]:
-        for num_of_heads in [132, 120, 108, 96, 84, 72]:
+        for num_of_heads in [12]:
             for cooldown_steps in [25000]:
                 for starting_temperature in [1e3]:
                     for starting_num_of_heads in [144]:
                         for lr in [0.5]:
                             logger.info(
-                                "cooldown_steps: {}, starting_temperature: {}, starting_num_of_heads: {}, learning_rate: {}".format(
+                                "cooldown_steps: {}, starting_temperature: {}, starting_num_of_heads: {}, learning_rate: {}," \
+                                " temperature: {}".format(
                                     cooldown_steps if annealing or reducing_heads else "N.A.", 
                                     starting_temperature if annealing else "N.A.", 
                                     starting_num_of_heads if reducing_heads else "N.A.",
                                     lr,
+                                    temperature,
                             ))
                             torch.manual_seed(42)
                             model = BertForSequenceClassificationConcrete.from_pretrained(
                                 model_args.model_name_or_path,
                                 config=config,
                             )
+
+                            # for n, p in model.named_parameters():
+                            #     if n != "w":
+                            #         p.requires_grad = False
 
                             optimizer_grouped_parameters = [
                                 {
@@ -230,9 +236,9 @@ def main():
                             # Training
                             trainer.train()
                             trainer.save_model()
-                            score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
+                            # score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
                             print_2d_tensor(model.get_w())
-                            logger.info("temperature: {}, num of heads: {}, accuracy: {}".format(temperature, num_of_heads, score * 100))
+                            # logger.info("temperature: {}, num of heads: {}, accuracy: {}".format(temperature, num_of_heads, score * 100))
 
                             model._apply_dropout = False
                             list_of_nums = []
