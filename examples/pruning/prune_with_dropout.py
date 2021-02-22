@@ -172,7 +172,7 @@ def main():
     else:
         metric = "eval_acc"
 
-    annealing = False
+    annealing = True
     reducing_heads = False
     for temperature in [1e-8]:
         for num_of_heads in [12]:

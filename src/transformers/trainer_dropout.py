@@ -327,6 +327,8 @@ class DropoutTrainer(Trainer):
 
                     self.lr_scheduler.step()
                     model.zero_grad()
+                    if self.global_step % 1000 == 0 or self.global_step == t_total - 1:
+                        torch.save(model.get_masks(), os.path.join(self.args.output_dir, "mask" + str(self.global_step) + ".pt"))
                     self.global_step += 1
                     self.epoch = epoch + (step + 1) / len(epoch_iterator)
 
@@ -387,8 +389,6 @@ class DropoutTrainer(Trainer):
                 if self.args.max_steps > 0 and self.global_step >= self.args.max_steps:
                     break
 
-                if self.global_step % 5000 == 0 or self.global_step == t_total - 1:
-                    torch.save(model.get_masks(), os.path.join(self.args.output_dir, "mask" + str(self.global_step) + ".pt"))
             epoch_pbar.close()
             train_pbar.update(1)
             if self.args.tpu_metrics_debug or self.args.debug:
