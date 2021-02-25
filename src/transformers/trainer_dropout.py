@@ -118,6 +118,7 @@ class DropoutTrainer(Trainer):
         annealing: Optional[bool] = False,
         starting_temperature: Optional[float] = 1.0,
         starting_num_of_heads: Optional[int] = 144,
+        intermediate_masks: Optional[bool] = False,
         **kwargs,
     ):
         super().__init__(
@@ -131,6 +132,7 @@ class DropoutTrainer(Trainer):
         self.cooldown_steps = cooldown_steps
         self.starting_temperature = starting_temperature
         self.starting_num_of_heads = starting_num_of_heads
+        self.intermediate_masks = intermediate_masks
 
     def train(self, model_path: Optional[str] = None, trial: Union["optuna.Trial", Dict[str, Any]] = None):
         """
@@ -327,7 +329,7 @@ class DropoutTrainer(Trainer):
 
                     self.lr_scheduler.step()
                     model.zero_grad()
-                    if self.global_step % 1000 == 0 or self.global_step == t_total - 1:
+                    if self.intermediate_masks and (self.global_step % 1000 == 0 or self.global_step == t_total - 1):
                         torch.save(model.get_masks(), os.path.join(self.args.output_dir, "mask" + str(self.global_step) + ".pt"))
                     self.global_step += 1
                     self.epoch = epoch + (step + 1) / len(epoch_iterator)

@@ -44,6 +44,7 @@ from transformers import (
 )
 from torch.utils.data import DataLoader, SequentialSampler, Subset
 from tqdm import tqdm
+import time
 from pruning_utils import print_2d_tensor
 
 
@@ -172,88 +173,51 @@ def main():
     else:
         metric = "eval_acc"
 
-    annealing = True
-    reducing_heads = False
-    for temperature in [1e-8]:
-        for num_of_heads in [132, 120, 108, 96, 84, 72, 60, 48, 36, 24, 12]:
-            for cooldown_steps in [8333]:
-                for starting_temperature in [1e3]:
-                    for starting_num_of_heads in [144]:
-                        for lr in [0.5]:
-                            logger.info(
-                                "cooldown_steps: {}, starting_temperature: {}, starting_num_of_heads: {}, learning_rate: {}," \
-                                " temperature: {}".format(
-                                    cooldown_steps if annealing or reducing_heads else "N.A.", 
-                                    starting_temperature if annealing else "N.A.", 
-                                    starting_num_of_heads if reducing_heads else "N.A.",
-                                    lr,
-                                    temperature,
-                            ))
-                            torch.manual_seed(42)
-                            model = BertForSequenceClassificationConcrete.from_pretrained(
-                                model_args.model_name_or_path,
-                                config=config,
-                            )
+    torch.manual_seed(42)
+    model = BertForSequenceClassification.from_pretrained(
+        model_args.model_name_or_path,
+        config=config,
+    )
 
-                            for n, p in model.named_parameters():
-                                if n != "w":
-                                    p.requires_grad = False
+    # Initialize our Trainer
+    training_args.max_steps = -1
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        compute_metrics=build_compute_metrics_fn(data_args.task_name),
+    )
 
-                            optimizer_grouped_parameters = [
-                                # {
-                                #     "params": [p for n, p in model.named_parameters() if n != "w"],
-                                #     "lr": training_args.learning_rate,
-                                # },
-                                {
-                                    "params": [p for n, p in model.named_parameters() if n == "w"],
-                                    "lr": lr,
-                                },
-                            ]
-                            optimizer = AdamW(
-                                optimizer_grouped_parameters,
-                                betas=(0.9, 0.999),
-                                eps=1e-8,
-                            )
+    start = time.time()
+    trainer.evaluate(eval_dataset=eval_dataset)
+    end = time.time()
+    print("Before pruning", end - start)
 
-                            # Initialize our Trainer
-                            training_args.max_steps = -1
-                            trainer = DropoutTrainer(
-                                model=model,
-                                args=training_args,
-                                train_dataset=train_dataset,
-                                eval_dataset=eval_dataset,
-                                compute_metrics=build_compute_metrics_fn(data_args.task_name),
-                                num_of_heads=num_of_heads,
-                                reducing_heads=reducing_heads,
-                                temperature=temperature,
-                                cooldown_steps=cooldown_steps,
-                                annealing=annealing,
-                                starting_temperature=starting_temperature,
-                                starting_num_of_heads=starting_num_of_heads,
-                                optimizers=(optimizer, None),
-                                intermediate_masks=False,
-                            )
+    head_mask = torch.Tensor([[0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0.],
+        [0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0.],
+        [1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0.],
+        [0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0.],
+        [0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.]])
+    
+    heads_to_prune = {}
+    for i, hm in enumerate(head_mask):
+        heads_to_prune[i] = list((hm == 0).nonzero().view(-1).numpy())
+    
+    model.prune_heads(heads_to_prune)
 
-                            # Training
-                            # trainer.train()
-                            # trainer.save_model()
-                            # score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
-                            # print_2d_tensor(model.get_w())
-                            # logger.info("temperature: {}, num of heads: {}, accuracy: {}".format(temperature, num_of_heads, score * 100))
+    start = time.time()
+    trainer.evaluate(eval_dataset=eval_dataset)
+    end = time.time()
+    print("After pruning", end - start)
 
-                            model._apply_dropout = False
-                            head_mask = convert_gate_to_mask(model.get_w(), num_of_heads)
-                            torch.save(head_mask, os.path.join(training_args.output_dir, "mask" + str(num_of_heads) + ".pt"))
-                            # print_2d_tensor(head_mask)
-                            model.apply_masks(head_mask)
-                            score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
-                            sparsity = 100 - head_mask.sum() / head_mask.numel() * 100
-                            logger.info(
-                                "Masking: current score: %f, remaining heads %d (%.1f percents)",
-                                score,
-                                head_mask.sum(),
-                                100 - sparsity,
-                            )
     
 
 
