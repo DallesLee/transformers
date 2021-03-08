@@ -172,9 +172,12 @@ def main():
     else:
         metric = "eval_acc"
 
-    for l0_penalty in [0.01, 0.02, 0.05, 0.1, 0.2, 0.5]:
-        if os.path.exists(training_args.output_dir):
-            shutil.rmtree(training_args.output_dir)
+    lambdas = [0.024, 0.015, 0.01, 0.008, 0.008, 0.005, 0.005, 0.002, 0.002, 0.001, 0.0008]
+    nums = [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]
+
+    for l0_penalty, num in zip(lambdas, nums):
+        # if os.path.exists(training_args.output_dir):
+        #     shutil.rmtree(training_args.output_dir)
         torch.manual_seed(42)
         model = BertForSequenceClassificationConcrete.from_pretrained(
             model_args.model_name_or_path,
@@ -183,25 +186,25 @@ def main():
 
         model.apply_gates(l0_penalty)
 
-        # for n, p in model.named_parameters():
-        #     if not "log_a" in n:
-        #         p.requires_grad = False
+        for n, p in model.named_parameters():
+            if not "log_a" in n:
+                p.requires_grad = False
 
-        # optimizer_grouped_parameters = [
-        #     {
-        #         "params": [p for n, p in model.named_parameters() if not "log_a" in n],
-        #         "lr": training_args.learning_rate,
-        #     },
-        #     {
-        #         "params": [p for n, p in model.named_parameters() if "log_a" in n],
-        #         "lr": 1e-1,
-        #     },
-        # ]
-        # optimizer = AdamW(
-        #     optimizer_grouped_parameters,
-        #     betas=(0.9, 0.999),
-        #     eps=1e-8,
-        # )
+        optimizer_grouped_parameters = [
+            # {
+            #     "params": [p for n, p in model.named_parameters() if not "log_a" in n],
+            #     "lr": training_args.learning_rate,
+            # },
+            {
+                "params": [p for n, p in model.named_parameters() if "log_a" in n],
+                "lr": 1e-1,
+            },
+        ]
+        optimizer = AdamW(
+            optimizer_grouped_parameters,
+            betas=(0.9, 0.999),
+            eps=1e-8,
+        )
 
         # Initialize our Trainer
         training_args.max_steps = -1
@@ -211,7 +214,7 @@ def main():
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             compute_metrics=build_compute_metrics_fn(data_args.task_name),
-            # optimizers=(optimizer, None)
+            optimizers=(optimizer, None)
         )
 
         # Training
@@ -239,12 +242,13 @@ def main():
         # print_2d_tensor(head_mask)
         logger.info("lambda: {}, remaining heads: {}, accuracy: {}".format(l0_penalty, head_mask.sum(), score * 100))
 
-        if head_mask.sum() <= 12:
-            list_of_nums = list(range(1,13))
-        else:
-            list_of_nums = [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]
+        # if head_mask.sum() <= 12:
+        #     list_of_nums = list(range(1,13))
+        # else:
+        list_of_nums = [num]
         for num_to_unmask in list_of_nums:
             head_mask = convert_gate_to_mask(gates, num_to_unmask)
+            torch.save(head_mask, os.path.join(training_args.output_dir, "mask" + str(num_to_unmask) + ".pt"))
             # print_2d_tensor(head_mask)
             model.apply_masks(head_mask)
             score = trainer.evaluate(eval_dataset=eval_dataset)[metric]

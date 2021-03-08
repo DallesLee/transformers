@@ -260,9 +260,6 @@ def main():
     # Prepare dataset for the GLUE task
     train_dataset = GlueDataset(args, tokenizer=tokenizer)
     train_sampler = SequentialSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
-    train_dataloader = DataLoader(
-        train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
-    )
 
     if args.task_name == "mnli":
         args.task_name="mnli-mm"
@@ -273,136 +270,21 @@ def main():
     if args.data_subset > 0:
         eval_dataset = Subset(eval_dataset, list(range(min(args.data_subset, len(eval_dataset)))))
     eval_sampler = SequentialSampler(eval_dataset) if args.local_rank == -1 else DistributedSampler(eval_dataset)
-    eval_dataloader = DataLoader(
-        eval_dataset, sampler=eval_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
-    )
 
-    # p_value = test(args, model, train_dataloader, eval_dataset)
-    # logger.info("p_value is: %f", p_value)
-
-    # Try head masking (set heads to zero until the score goes under a threshole)
-    # and head pruning (remove masked heads and see the effect on the network)
-    # head_importance = compute_heads_importance(args, model, train_dataloader)
-    # head_importance = torch.Tensor(np.load(os.path.join(args.output_dir, "head_importance.npy"))).to(args.device)
-    # args.exact_pruning = True
-    # args.dont_normalize_importance_by_layer = True
-    # args.use_second = True
-    # scores, sparsities, all_head_masks = mask_heads(
-    #     args, model, train_dataloader, eval_dataloader
-    # )
-    # logger.info("Area under curve: %.2f", auc(sparsities, scores))
-    
-    # scores, sparsities, all_head_masks = unmask_heads(
-    #     args, model, train_dataloader, eval_dataloader
-    # )
-    # logger.info("Area under curve: %.2f", auc(sparsities, scores))
-
-    # score, sparisity, head_mask = gibbs_sampling(
-    #     args, model, train_dataloader, eval_dataloader, val_dataloader=val_dataloader, early_stop_step=24, K=2, n_groups=1
-    # )
-
-    # scores = []
-    # sparsities = []
-    # all_head_masks = []
-    # for k in range(1,12):
-    #     score, sparisity, head_mask = gibbs_sampling(
-    #         args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=1
-    #     )
-    for k in range(1,12):
+    for k in range(7,12):
     # for head_mask in all_head_masks:
-        head_mask = torch.load(os.path.join("dropout_output/MNLI/post/", "mask" + str(k * 12) + ".pt"))
+        head_mask = torch.load(os.path.join(args.output_dir, "mask" + str(k * 12) + ".pt"))
         model = BertForSequenceClassificationConcrete.from_pretrained(
             args.model_name_or_path,
             from_tf=bool(".ckpt" in args.model_name_or_path),
             config=config,
             cache_dir=args.cache_dir,
         )
-        # model.eval()
-
-        # Distributed and parallel training
-        # model.to(args.device)
-        # if args.local_rank != -1:
-        #     model = torch.nn.parallel.DistributedDataParallel(
-        #         model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=True
-        #     )
-        # elif args.n_gpu > 1:
-        #     model = torch.nn.DataParallel(model)
-        # score, sparisity, head_mask = gibbs_sampling(
-        #     args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=1, annealing=False
-        # )
-        # score, sparsity, head_mask = random_sampling(
-        #     args, model, eval_dataloader, val_dataloader, early_stop_step=36, K=k, n_groups=1
-        # )
         score = train(args, model, head_mask, train_dataset, eval_dataset, epoch=3.0)
         logger.info(
             "Current score: %f, remaining heads %d",
             score,
             head_mask.sum(),
         )
-        # scores.append(score)
-        # sparsities.append(sparisity)
-        # all_head_masks.append(head_mask)
-    # save_results(args, scores, sparsities, all_head_masks, "markov_small")
-
-    # scores = []
-    # sparsities = []
-    # all_head_masks = []
-    # for n_groups in [6]:
-    #     for k in range(8,12):
-    #         score, sparisity, head_mask = gibbs_sampling(
-    #             args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=n_groups,
-    #             annealing=True
-    #         )
-
-    # for n_groups in [1,2,3,4,6,12]:
-    #     for k in [11]:
-    #         score, sparisity, head_mask = gibbs_sampling(
-    #             args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=n_groups,
-    #             annealing=True
-    #         )
-        # scores.append(score)
-    #     sparsities.append(sparisity)
-    #     all_head_masks.append(head_mask)
-    # save_results(args, scores, sparsities, all_head_masks, "gibbs_layer_small")
-    
-    # for seed in [0,1,2,3]:
-        # scores = []
-        # sparsities = []
-        # all_head_masks = []
-        # for k in range(1,12):
-        #     score, sparisity, head_mask = gibbs_sampling(
-        #         args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k,
-        #         n_groups=1, annealing=True, seed=seed
-        #     )
-            # scores.append(score)
-            # sparsities.append(sparisity)
-            # all_head_masks.append(head_mask)
-        # save_results(args, scores, sparsities, all_head_masks, "gibbs_group"+str(n_groups)+"_seed"+str(seed))
-
-    # for k in [2,3,4,5,6,7]:
-    #     train(args, model, train_dataloader, eval_dataloader, K=k)
-
-
-    # score, sparisity, head_mask = gibbs_sampling_test(
-    #     args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=[8,4], n_groups=2
-    # )
-    # plot_graph(args)
-
-#     head_mask = "1.00000 0.00000 0.00000 1.00000 1.00000 0.00000 0.00000 0.00000 1.00000 0.00000 0.00000 0.00000 \
-# 0.00000 0.00000 0.00000 0.00000 1.00000 0.00000 0.00000 1.00000 1.00000 1.00000 1.00000 1.00000 \
-# 1.00000 1.00000 1.00000 1.00000 0.00000 0.00000 1.00000 0.00000 0.00000 1.00000 1.00000 1.00000 \
-# 1.00000 0.00000 0.00000 1.00000 0.00000 1.00000 0.00000 0.00000 0.00000 0.00000 0.00000 0.00000 \
-# 1.00000 1.00000 1.00000 1.00000 1.00000 1.00000 1.00000 0.00000 0.00000 1.00000 0.00000 0.00000 \
-# 1.00000 0.00000 0.00000 1.00000 1.00000 1.00000 0.00000 1.00000 1.00000 0.00000 1.00000 0.00000 \
-# 1.00000 1.00000 0.00000 0.00000 0.00000 1.00000 1.00000 0.00000 1.00000 0.00000 1.00000 0.00000 \
-# 1.00000 1.00000 0.00000 0.00000 0.00000 0.00000 0.00000 0.00000 1.00000 0.00000 1.00000 0.00000 \
-# 0.00000 1.00000 0.00000 0.00000 1.00000 1.00000 0.00000 1.00000 1.00000 1.00000 1.00000 1.00000 \
-# 1.00000 0.00000 1.00000 0.00000 0.00000 0.00000 1.00000 1.00000 1.00000 0.00000 1.00000 1.00000 \
-# 1.00000 0.00000 0.00000 1.00000 0.00000 0.00000 0.00000 1.00000 1.00000 0.00000 1.00000 1.00000 \
-# 1.00000 1.00000 1.00000 0.00000 0.00000 0.00000 0.00000 0.00000 1.00000 1.00000 0.00000 0.00000"
-#     head_mask = np.array(re.split(" ", head_mask)).reshape(12,12).astype("float")
-#     head_mask = torch.Tensor(head_mask).to(args.device)
-#     logger.info(evaluate(args, model, eval_dataloader, head_mask))
-    # random_sampling(args, model, eval_dataloader, val_dataloader, early_stop_step=36, K=6, n_groups=1)
 if __name__ == "__main__":
     main()

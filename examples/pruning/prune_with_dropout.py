@@ -151,6 +151,7 @@ def main():
     train_dataset = (
         GlueDataset(data_args, tokenizer=tokenizer, cache_dir=model_args.cache_dir) if training_args.do_train else None
     )
+    train_dataset = Subset(train_dataset, list(range(0.1 * len(train_dataset)))
     if data_args.task_name == "mnli":
         data_args.task_name="mnli-mm"
         eval_dataset = (
@@ -235,7 +236,7 @@ def main():
                             )
 
                             # Training
-                            # trainer.train()
+                            trainer.train()
                             # trainer.save_model()
                             # score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
                             # print_2d_tensor(model.get_w())
@@ -243,7 +244,7 @@ def main():
 
                             model._apply_dropout = False
                             head_mask = convert_gate_to_mask(model.get_w(), num_of_heads)
-                            torch.save(head_mask, os.path.join(training_args.output_dir, "mask" + str(num_of_heads) + ".pt"))
+                            # torch.save(head_mask, os.path.join(training_args.output_dir, "mask" + str(num_of_heads) + ".pt"))
                             # print_2d_tensor(head_mask)
                             model.apply_masks(head_mask)
                             score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
