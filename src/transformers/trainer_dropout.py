@@ -274,6 +274,8 @@ class DropoutTrainer(Trainer):
                 self._past = None
 
             epoch_pbar = tqdm(epoch_iterator, desc="Iteration", disable=disable_tqdm)
+            if (self.reducing_heads or self.annealing) and t_total < self.cooldown_steps:
+                logger.warning("It never cools down!!! total steps: {}".format(t_total))
             for step, inputs in enumerate(epoch_iterator):
 
                 # Skip past any already trained steps if resuming training
@@ -297,9 +299,6 @@ class DropoutTrainer(Trainer):
                 else:
                     temperature = self.temperature
                 # print("temperature: {}".format(temperature))
-
-                if (self.reducing_heads or self.annealing) and t_total < self.cooldown_steps:
-                    logger.warning("It never cools down!!! total steps: {}".format(t_total))
 
                 model.apply_dropout(num_of_heads, temperature)
 

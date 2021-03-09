@@ -177,7 +177,7 @@ def main():
     reducing_heads = False
     for temperature in [1e-8]:
         for num_of_heads in [12]:
-            for cooldown_steps in [2500]:
+            for cooldown_steps in [833, 1228]:
                 for starting_temperature in [1e3]:
                     for starting_num_of_heads in [144]:
                         for lr in [0.5]:
