@@ -299,7 +299,7 @@ class DropoutTrainer(Trainer):
                 # print("temperature: {}".format(temperature))
 
                 if (self.reducing_heads or self.annealing) and t_total < self.cooldown_steps:
-                    warnings.warn("It never cools down!!!")
+                    logger.warning("It never cools down!!! total steps: {}".format(t_total))
 
                 model.apply_dropout(num_of_heads, temperature)
 
