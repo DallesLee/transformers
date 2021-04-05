@@ -151,7 +151,7 @@ def main():
     train_dataset = (
         GlueDataset(data_args, tokenizer=tokenizer, cache_dir=model_args.cache_dir) if training_args.do_train else None
     )
-    train_dataset = Subset(train_dataset, list(range(int(0.1 * len(train_dataset)))))
+    # train_dataset = Subset(train_dataset, list(range(int(0.1 * len(train_dataset)))))
     if data_args.task_name == "mnli":
         data_args.task_name="mnli-mm"
         eval_dataset = (
@@ -176,9 +176,9 @@ def main():
     annealing = True
     reducing_heads = False
     for temperature in [1e-8]:
-        for num_of_heads in [12]:
-            for cooldown_steps in [833, 1228]:
-                for starting_temperature in [1e3]:
+        for num_of_heads in [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]:
+            for cooldown_steps in [8333]:
+                for starting_temperature in [1000]:
                     for starting_num_of_heads in [144]:
                         for lr in [0.5]:
                             logger.info(
@@ -196,15 +196,15 @@ def main():
                                 config=config,
                             )
 
-                            for n, p in model.named_parameters():
-                                if n != "w":
-                                    p.requires_grad = False
+                            # for n, p in model.named_parameters():
+                            #     if n != "w":
+                            #         p.requires_grad = False
 
                             optimizer_grouped_parameters = [
-                                # {
-                                #     "params": [p for n, p in model.named_parameters() if n != "w"],
-                                #     "lr": training_args.learning_rate,
-                                # },
+                                {
+                                    "params": [p for n, p in model.named_parameters() if n != "w"],
+                                    "lr": training_args.learning_rate,
+                                },
                                 {
                                     "params": [p for n, p in model.named_parameters() if n == "w"],
                                     "lr": lr,

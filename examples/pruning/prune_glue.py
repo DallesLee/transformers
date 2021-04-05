@@ -284,13 +284,13 @@ def main():
     # and head pruning (remove masked heads and see the effect on the network)
     # head_importance = compute_heads_importance(args, model, train_dataloader)
     # head_importance = torch.Tensor(np.load(os.path.join(args.output_dir, "head_importance.npy"))).to(args.device)
-    # args.exact_pruning = True
+    args.exact_pruning = True
     # args.dont_normalize_importance_by_layer = True
     # args.use_second = True
-    # scores, sparsities, all_head_masks = mask_heads(
-    #     args, model, train_dataloader, eval_dataloader
-    # )
-    # logger.info("Area under curve: %.2f", auc(sparsities, scores))
+    scores, sparsities, all_head_masks = mask_heads(
+        args, model, train_dataloader, eval_dataloader
+    )
+    logger.info("Area under curve: %.2f", auc(sparsities, scores))
     
     # scores, sparsities, all_head_masks = unmask_heads(
     #     args, model, train_dataloader, eval_dataloader
@@ -308,15 +308,15 @@ def main():
     #     score, sparisity, head_mask = gibbs_sampling(
     #         args, model, val_dataloader, eval_dataloader, early_stop_step=36, K=k, n_groups=1
     #     )
-    for k in range(1,12):
+    # for k in range(1,12):
     # for head_mask in all_head_masks:
-        head_mask = torch.load(os.path.join("dropout_output/MNLI/post/", "mask" + str(k * 12) + ".pt"))
-        model = BertForSequenceClassificationConcrete.from_pretrained(
-            args.model_name_or_path,
-            from_tf=bool(".ckpt" in args.model_name_or_path),
-            config=config,
-            cache_dir=args.cache_dir,
-        )
+        # head_mask = torch.load(os.path.join("dropout_output/MNLI/post/", "mask" + str(k * 12) + ".pt"))
+        # model = BertForSequenceClassificationConcrete.from_pretrained(
+        #     args.model_name_or_path,
+        #     from_tf=bool(".ckpt" in args.model_name_or_path),
+        #     config=config,
+        #     cache_dir=args.cache_dir,
+        # )
         # model.eval()
 
         # Distributed and parallel training
@@ -333,12 +333,12 @@ def main():
         # score, sparsity, head_mask = random_sampling(
         #     args, model, eval_dataloader, val_dataloader, early_stop_step=36, K=k, n_groups=1
         # )
-        score = train(args, model, head_mask, train_dataset, eval_dataset, epoch=3.0)
-        logger.info(
-            "Current score: %f, remaining heads %d",
-            score,
-            head_mask.sum(),
-        )
+        # score = train(args, model, head_mask, train_dataset, eval_dataset, epoch=3.0)
+        # logger.info(
+        #     "Current score: %f, remaining heads %d",
+        #     score,
+        #     head_mask.sum(),
+        # )
         # scores.append(score)
         # sparsities.append(sparisity)
         # all_head_masks.append(head_mask)

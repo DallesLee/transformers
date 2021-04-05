@@ -482,6 +482,9 @@ def mask_heads(
             100 - sparsity,
         )
 
+        if new_head_mask.sum() <= 12:
+            num_to_mask = 1
+
         step += 1
 
 
@@ -639,7 +642,7 @@ def unmask_heads_f5(
             current_score,
             new_head_mask.sum(),
             100 - sparsity,
-        )
+        )   
 
         step += 1
     
