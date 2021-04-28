@@ -201,6 +201,12 @@ def main():
     for num_of_heads in [132, 120, 108, 96, 84, 72, 60, 48, 36, 24, 12]:
         for i in range(5):
             torch.manual_seed(i)
+            config = AutoConfig.from_pretrained(
+                model_args.config_name if model_args.config_name else model_args.model_name_or_path,
+                num_labels=num_labels,
+                finetuning_task=data_args.task_name,
+                cache_dir=model_args.cache_dir,
+            )
             model = BertForSequenceClassification.from_pretrained(
                 model_args.model_name_or_path,
                 config=config,
