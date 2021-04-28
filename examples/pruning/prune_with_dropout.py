@@ -196,15 +196,15 @@ def main():
                                 config=config,
                             )
 
-                            # for n, p in model.named_parameters():
-                            #     if n != "w":
-                            #         p.requires_grad = False
+                            for n, p in model.named_parameters():
+                                if n != "w":
+                                    p.requires_grad = False
 
                             optimizer_grouped_parameters = [
-                                {
-                                    "params": [p for n, p in model.named_parameters() if n != "w"],
-                                    "lr": training_args.learning_rate,
-                                },
+                                # {
+                                #     "params": [p for n, p in model.named_parameters() if n != "w"],
+                                #     "lr": training_args.learning_rate,
+                                # },
                                 {
                                     "params": [p for n, p in model.named_parameters() if n == "w"],
                                     "lr": lr,

@@ -172,10 +172,12 @@ def main():
     else:
         metric = "eval_acc"
 
-    lambdas = [0.024, 0.015, 0.01, 0.008, 0.008, 0.005, 0.005, 0.002, 0.002, 0.001, 0.0008]
-    nums = [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]
+    # lambdas = [0.024, 0.015, 0.01, 0.008, 0.008, 0.005, 0.005, 0.002, 0.002, 0.001, 0.0008]
+    # nums = [12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132]
+    lambdas = np.logspace(-7, -2, 30)
 
-    for l0_penalty, num in zip(lambdas, nums):
+    # for l0_penalty, num in zip(lambdas, nums):
+    for l0_penalty in lambdas:
         # if os.path.exists(training_args.output_dir):
         #     shutil.rmtree(training_args.output_dir)
         torch.manual_seed(42)
@@ -186,15 +188,15 @@ def main():
 
         model.apply_gates(l0_penalty)
 
-        for n, p in model.named_parameters():
-            if not "log_a" in n:
-                p.requires_grad = False
+        # for n, p in model.named_parameters():
+        #     if not "log_a" in n:
+        #         p.requires_grad = False
 
         optimizer_grouped_parameters = [
-            # {
-            #     "params": [p for n, p in model.named_parameters() if not "log_a" in n],
-            #     "lr": training_args.learning_rate,
-            # },
+            {
+                "params": [p for n, p in model.named_parameters() if not "log_a" in n],
+                "lr": training_args.learning_rate,
+            },
             {
                 "params": [p for n, p in model.named_parameters() if "log_a" in n],
                 "lr": 1e-1,
@@ -245,20 +247,20 @@ def main():
         # if head_mask.sum() <= 12:
         #     list_of_nums = list(range(1,13))
         # else:
-        list_of_nums = [num]
-        for num_to_unmask in list_of_nums:
-            head_mask = convert_gate_to_mask(gates, num_to_unmask)
-            torch.save(head_mask, os.path.join(training_args.output_dir, "mask" + str(num_to_unmask) + ".pt"))
-            # print_2d_tensor(head_mask)
-            model.apply_masks(head_mask)
-            score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
-            sparsity = 100 - head_mask.sum() / head_mask.numel() * 100
-            logger.info(
-                "Masking: current score: %f, remaining heads %d (%.1f percents)",
-                score,
-                head_mask.sum(),
-                100 - sparsity,
-            )
+        # list_of_nums = [num]
+        # for num_to_unmask in list_of_nums:
+        #     head_mask = convert_gate_to_mask(gates, num_to_unmask)
+        #     torch.save(head_mask, os.path.join(training_args.output_dir, "mask" + str(num_to_unmask) + ".pt"))
+        #     # print_2d_tensor(head_mask)
+        #     model.apply_masks(head_mask)
+        #     score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
+        #     sparsity = 100 - head_mask.sum() / head_mask.numel() * 100
+        #     logger.info(
+        #         "Masking: current score: %f, remaining heads %d (%.1f percents)",
+        #         score,
+        #         head_mask.sum(),
+        #         100 - sparsity,
+        #     )
 
 
     

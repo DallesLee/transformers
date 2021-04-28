@@ -321,10 +321,14 @@ class BertAttention(nn.Module):
         )
 
         # Prune linear layers
-        self.self.query = prune_linear_layer(self.self.query, index)
-        self.self.key = prune_linear_layer(self.self.key, index)
-        self.self.value = prune_linear_layer(self.self.value, index)
-        self.output.dense = prune_linear_layer(self.output.dense, index, dim=1)
+        if len(index) > 0:
+            self.self.query = prune_linear_layer(self.self.query, index)
+            self.self.key = prune_linear_layer(self.self.key, index)
+            self.self.value = prune_linear_layer(self.self.value, index)
+            self.output.dense = prune_linear_layer(self.output.dense, index, dim=1)
+        else:
+            self.self = None
+            self.output = None
 
         # Update hyper params and store pruned heads
         self.self.num_attention_heads = self.self.num_attention_heads - len(heads)
@@ -340,16 +344,19 @@ class BertAttention(nn.Module):
         encoder_attention_mask=None,
         output_attentions=False,
     ):
-        self_outputs = self.self(
-            hidden_states,
-            attention_mask,
-            head_mask,
-            encoder_hidden_states,
-            encoder_attention_mask,
-            output_attentions,
-        )
-        attention_output = self.output(self_outputs[0], hidden_states)
-        outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
+        if self.self is not None:
+            self_outputs = self.self(
+                hidden_states,
+                attention_mask,
+                head_mask,
+                encoder_hidden_states,
+                encoder_attention_mask,
+                output_attentions,
+            )
+            attention_output = self.output(self_outputs[0], hidden_states)
+            outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
+        else:
+            outputs = hidden_states
         return outputs
 
 
