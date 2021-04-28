@@ -192,31 +192,48 @@ def main():
     start = time.time()
     trainer.evaluate(eval_dataset=eval_dataset)
     end = time.time()
-    print("Before pruning", end - start)
+    total = 0
+    for parameter in model.parameters():
+        total += parameter.numel()
+    total
+    print("Before pruning: time: {}, num: {}".format(end - start, total))
 
-    head_mask = torch.Tensor([[0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0.],
-        [0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
-        [0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0.],
-        [1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
-        [0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.],
-        [0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0.],
-        [0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.],
-        [0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
-        [0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0.],
-        [0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.],
-        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0.],
-        [0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.]])
-    
-    heads_to_prune = {}
-    for i, hm in enumerate(head_mask):
-        heads_to_prune[i] = list((hm == 0).nonzero().view(-1).numpy())
-    
-    model.prune_heads(heads_to_prune)
+    for num_of_heads in [132, 120, 108, 96, 84, 72, 60, 48, 36, 24, 12]:
+        for i in range(5):
+            torch.manual_seed(i)
+            model = BertForSequenceClassification.from_pretrained(
+                model_args.model_name_or_path,
+                config=config,
+            )
 
-    start = time.time()
-    trainer.evaluate(eval_dataset=eval_dataset)
-    end = time.time()
-    print("After pruning", end - start)
+            # Initialize our Trainer
+            training_args.max_steps = -1
+            trainer = Trainer(
+                model=model,
+                args=training_args,
+                train_dataset=train_dataset,
+                eval_dataset=eval_dataset,
+                compute_metrics=build_compute_metrics_fn(data_args.task_name),
+            )
+
+            head_mask = torch.zeros(12,12)
+            indices = indices = torch.randint(144, (num_of_heads,))
+            head_mask.view(-1)[indices] = 1
+
+            heads_to_prune = {}
+            for i, hm in enumerate(head_mask):
+                heads_to_prune[i] = list((hm == 0).nonzero().view(-1).numpy())
+            
+            model.prune_heads(heads_to_prune)
+
+            start = time.time()
+            trainer.evaluate(eval_dataset=eval_dataset)
+            end = time.time()
+            total = 0
+            for parameter in model.parameters():
+                total += parameter.numel()
+            total
+            print("After pruning (num of heads: {}): time: {}, num_of_params: {}".format(num_of_heads, end - start, total))
 
     
 
