@@ -357,7 +357,7 @@ class BertAttention(nn.Module):
             attention_output = self.output(self_outputs[0], hidden_states)
             outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
         else:
-            outputs = hidden_states
+            outputs = (hidden_states,)
         return outputs
 
 
