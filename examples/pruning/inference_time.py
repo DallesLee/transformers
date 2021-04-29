@@ -244,8 +244,8 @@ def main():
                 total += parameter.numel()
             total
             total_pruned.append(total)
-        speedup = time_original - np.mean(time_pruned) / time_original * 100
-        shrinkage = total_original - np.mean(total_pruned) / total_original * 100
+        speedup = (time_original - np.mean(time_pruned)) / time_original * 100
+        shrinkage = (total_original - np.mean(total_pruned)) / total_original * 100
         print("After pruning (num of heads: {}): speedup: {}, shrinkage: {}".format(num_of_heads, speedup, shrinkage))
 
     
