@@ -192,13 +192,16 @@ def main():
     start = time.time()
     trainer.evaluate(eval_dataset=eval_dataset)
     end = time.time()
-    total = 0
+    time_original = end - start
+    total_original = 0
     for parameter in model.parameters():
-        total += parameter.numel()
-    total
-    print("Before pruning: time: {}, num: {}".format(end - start, total))
+        total_original += parameter.numel()
+    total_original
+    print("Before pruning: time: {}, num: {}".format(time_original, total_original))
 
     for num_of_heads in [132, 120, 108, 96, 84, 72, 60, 48, 36, 24, 12]:
+        total_pruned = []
+        time_pruned = []
         for i in range(5):
             torch.manual_seed(i)
             config = AutoConfig.from_pretrained(
@@ -235,11 +238,15 @@ def main():
             start = time.time()
             trainer.evaluate(eval_dataset=eval_dataset)
             end = time.time()
+            time_pruned.append(end-start)
             total = 0
             for parameter in model.parameters():
                 total += parameter.numel()
             total
-            print("After pruning (num of heads: {}): time: {}, num_of_params: {}".format(num_of_heads, end - start, total))
+            total_pruned.append(total)
+        speedup = time_original - np.mean(time_pruned) / time_original * 100
+        shrinkage = total_original - np.mean(total_pruned) / total_original * 100
+        print("After pruning (num of heads: {}): speedup: {}, shrinkage: {}".format(num_of_heads, speedup, shrinkage))
 
     
 
