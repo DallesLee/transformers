@@ -268,6 +268,8 @@ def main():
         args.task_name="mnli-mm"
         eval_dataset = GlueDataset(args, tokenizer=tokenizer, mode="dev")
         args.task_name = "mnli"
+        val_dataset = GlueDataset(args, tokenizer=tokenizer, mode="dev")
+        args.metric_name = "mnli/acc"
     else:
         eval_dataset = GlueDataset(args, tokenizer=tokenizer, mode="dev")
     if args.data_subset > 0:
@@ -275,6 +277,10 @@ def main():
     eval_sampler = SequentialSampler(eval_dataset) if args.local_rank == -1 else DistributedSampler(eval_dataset)
     eval_dataloader = DataLoader(
         eval_dataset, sampler=eval_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
+    )
+    val_sampler = SequentialSampler(val_dataset) if args.local_rank == -1 else DistributedSampler(val_dataset)
+    val_dataloader = DataLoader(
+        val_dataset, sampler=val_sampler, batch_size=args.batch_size, collate_fn=default_data_collator
     )
 
     # p_value = test(args, model, train_dataloader, eval_dataset)
@@ -284,22 +290,23 @@ def main():
     # and head pruning (remove masked heads and see the effect on the network)
     # head_importance = compute_heads_importance(args, model, train_dataloader)
     # head_importance = torch.Tensor(np.load(os.path.join(args.output_dir, "head_importance.npy"))).to(args.device)
-    args.exact_pruning = True
+    # args.exact_pruning = True
     # args.dont_normalize_importance_by_layer = True
     # args.use_second = True
-    scores, sparsities, all_head_masks = mask_heads(
-        args, model, train_dataloader, eval_dataloader
-    )
-    logger.info("Area under curve: %.2f", auc(sparsities, scores))
+    # scores, sparsities, all_head_masks = mask_heads(
+    #     args, model, train_dataloader, eval_dataloader
+    # )
+    # logger.info("Area under curve: %.2f", auc(sparsities, scores))
     
     # scores, sparsities, all_head_masks = unmask_heads(
     #     args, model, train_dataloader, eval_dataloader
     # )
     # logger.info("Area under curve: %.2f", auc(sparsities, scores))
 
-    # score, sparisity, head_mask = gibbs_sampling(
-    #     args, model, train_dataloader, eval_dataloader, val_dataloader=val_dataloader, early_stop_step=24, K=2, n_groups=1
-    # )
+    for k in [10, 11]:
+        score, sparisity, head_mask = gibbs_sampling(
+            args, model, train_dataloader, eval_dataloader, val_dataloader=val_dataloader, early_stop_step=12, K=k, n_groups=1
+        )
 
     # scores = []
     # sparsities = []

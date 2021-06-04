@@ -199,10 +199,10 @@ def main():
     total_original
     print("Before pruning: time: {}, num: {}".format(time_original, total_original))
 
-    for num_of_heads in [132, 120, 108, 96, 84, 72, 60, 48, 36, 24, 12]:
+    for num_of_heads in [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]:
         total_pruned = []
         time_pruned = []
-        for i in range(5):
+        for i in range(10):
             torch.manual_seed(i)
             config = AutoConfig.from_pretrained(
                 model_args.config_name if model_args.config_name else model_args.model_name_or_path,

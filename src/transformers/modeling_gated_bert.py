@@ -27,7 +27,7 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 
-from .concrete_gate import ConcreteGate, gumbel_soft_top_k
+from .concrete_gate import ConcreteGate, gumbel_soft_top_k, STEFunction
 
 from .activations import gelu, gelu_new, swish
 from .configuration_bert import BertConfig
@@ -1053,13 +1053,15 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         if self._apply_dropout:
             if self._apply_gates:
                 gates = self.get_gate_values()
-                head_mask = gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
+                # head_mask = gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
+                head_mask = STEFunction.apply(gates.view(-1), self.num_of_heads).view_as(gates)
             else:
                 # if self.linear:
                 #     self.w = self.dense(self.hidden_w.view(-1)).view_as(self.hidden_w)
                 # else:
                 #     self.w = self.hidden_w
-                head_mask = gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
+                # head_mask = gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
+                head_mask = STEFunction.apply(self.w.view(-1), self.num_of_heads).view_as(self.w)
             self.apply_masks(head_mask)
 
         outputs = self.bert(

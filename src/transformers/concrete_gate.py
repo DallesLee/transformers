@@ -108,3 +108,13 @@ def gumbel_soft_top_k(w, k, t):
 #         # p[j] = torch.softmax(r / t, 0)
         
 #     return p.sum(0)
+
+class STEFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, k):
+        threshold = input.sort(descending = True)[0][k]
+        return (input > threshold).float()
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output
