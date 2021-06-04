@@ -176,7 +176,7 @@ def main():
     annealing = True
     reducing_heads = False
     for temperature in [1e-8]:
-        for num_of_heads in [12]:
+        for num_of_heads in [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]:
             for cooldown_steps in [8333]:
                 for starting_temperature in [1000]:
                     for starting_num_of_heads in [144]:

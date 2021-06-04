@@ -964,7 +964,7 @@ def gibbs_sampling(
 
     layers_per_group = n_layers // n_groups
 
-    num_to_unmask = K * layers_per_group
+    num_to_unmask = K
 
     new_head_mask = torch.rand(n_layers, n_heads).to(args.device)
     new_head_mask[new_head_mask>=0.5] = 1.0
