@@ -1017,6 +1017,7 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         self.num_of_heads = None
         self.temperature = None
         self._apply_dropout = False
+        self._ste = False
         # self.linear = False
         # self.dense = nn.Linear(config.num_hidden_layers*config.num_attention_heads,config.num_hidden_layers*config.num_attention_heads)
 
@@ -1053,15 +1054,19 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
         if self._apply_dropout:
             if self._apply_gates:
                 gates = self.get_gate_values()
-                head_mask = gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
-                # head_mask = STEFunction.apply(gates.view(-1), self.num_of_heads).view_as(gates)
+                if self._ste:
+                    head_mask = STEFunction.apply(gates.view(-1), self.num_of_heads).view_as(gates)
+                else:
+                    head_mask = gumbel_soft_top_k(gates.view(-1), self.num_of_heads, self.temperature).view_as(gates)
             else:
                 # if self.linear:
                 #     self.w = self.dense(self.hidden_w.view(-1)).view_as(self.hidden_w)
                 # else:
                 #     self.w = self.hidden_w
-                head_mask = gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
-                # head_mask = STEFunction.apply(self.w.view(-1), self.num_of_heads).view_as(self.w)
+                if self._ste:
+                    head_mask = STEFunction.apply(self.w.view(-1), self.num_of_heads).view_as(self.w)
+                else:
+                    head_mask = gumbel_soft_top_k(self.w.view(-1), self.num_of_heads, self.temperature).view_as(self.w)
             self.apply_masks(head_mask)
 
         outputs = self.bert(
@@ -1124,10 +1129,13 @@ class BertForSequenceClassificationConcrete(BertPreTrainedModel):
     def get_masks(self):
         return torch.stack(self.bert.get_masks())
     
-    def apply_dropout(self, num_of_heads, temperature):
+    def apply_dropout(self, num_of_heads, temperature=None, ste=False):
         self.num_of_heads = num_of_heads
-        self.temperature = temperature
         self._apply_dropout = True
+        self._ste = ste
+
+        if not ste:
+            self.temperature = temperature
 
     def get_w(self):
         return self.w #if self.w is not None else self.hidden_w

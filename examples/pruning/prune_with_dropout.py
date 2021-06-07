@@ -225,14 +225,15 @@ def main():
                                 eval_dataset=eval_dataset,
                                 compute_metrics=build_compute_metrics_fn(data_args.task_name),
                                 num_of_heads=num_of_heads,
-                                reducing_heads=reducing_heads,
-                                temperature=temperature,
-                                cooldown_steps=cooldown_steps,
-                                annealing=annealing,
-                                starting_temperature=starting_temperature,
-                                starting_num_of_heads=starting_num_of_heads,
-                                optimizers=(optimizer, None),
-                                intermediate_masks=True,
+                                # reducing_heads=reducing_heads,
+                                # temperature=temperature,
+                                # cooldown_steps=cooldown_steps,
+                                # annealing=annealing,
+                                # starting_temperature=starting_temperature,
+                                # starting_num_of_heads=starting_num_of_heads,
+                                # optimizers=(optimizer, None),
+                                # intermediate_masks=True,
+                                ste=True,
                             )
 
                             # Training

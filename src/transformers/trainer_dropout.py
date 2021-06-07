@@ -119,6 +119,7 @@ class DropoutTrainer(Trainer):
         starting_temperature: Optional[float] = 1.0,
         starting_num_of_heads: Optional[int] = 144,
         intermediate_masks: Optional[bool] = False,
+        ste: Optional[bool] = False,
         **kwargs,
     ):
         super().__init__(
@@ -133,6 +134,7 @@ class DropoutTrainer(Trainer):
         self.starting_temperature = starting_temperature
         self.starting_num_of_heads = starting_num_of_heads
         self.intermediate_masks = intermediate_masks
+        self.ste = ste
 
     def train(self, model_path: Optional[str] = None, trial: Union["optuna.Trial", Dict[str, Any]] = None):
         """
@@ -292,15 +294,18 @@ class DropoutTrainer(Trainer):
                     num_of_heads = self.num_of_heads
                 # print("num of heads: {}".format(num_of_heads))
 
-                if (self.annealing and self.global_step <= self.cooldown_steps):
-                    temperature = np.exp(np.log(self.starting_temperature) - 
-                                    self.global_step / self.cooldown_steps
-                                    * (np.log(self.starting_temperature) - np.log(self.temperature)))
+                if self.ste:
+                    model.apply_dropout(num_of_heads, ste=self.ste)
                 else:
-                    temperature = self.temperature
-                # print("temperature: {}".format(temperature))
+                    if (self.annealing and self.global_step <= self.cooldown_steps):
+                        temperature = np.exp(np.log(self.starting_temperature) - 
+                                        self.global_step / self.cooldown_steps
+                                        * (np.log(self.starting_temperature) - np.log(self.temperature)))
+                    else:
+                        temperature = self.temperature
+                    # print("temperature: {}".format(temperature))
 
-                model.apply_dropout(num_of_heads, temperature)
+                    model.apply_dropout(num_of_heads, temperature=temperature)
 
                 tr_loss += self.training_step(model, inputs)
                 self.total_flos += self.floating_point_ops(inputs)
