@@ -1046,7 +1046,7 @@ def gibbs_sampling(
     # save_results(args, val_scores, sparsities, all_head_masks, file_name)
 
     val_scores = np.array(val_scores)
-    desired_sparsity = np.round(100 - K / n_heads * 100)
+    desired_sparsity = np.round(100 - K / (n_heads * n_layers) * 100)
     best_head_mask = None
     best_score = None
     i = None
