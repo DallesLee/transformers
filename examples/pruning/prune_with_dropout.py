@@ -176,8 +176,8 @@ def main():
     annealing = True
     reducing_heads = False
     for temperature in [1e-8]:
-        for num_of_heads in [12, 11, 10, 9]:
-            for cooldown_steps in [8333]:
+        for num_of_heads in [108]:
+            for cooldown_steps in [25000]:
                 for starting_temperature in [1000]:
                     for starting_num_of_heads in [144]:
                         for lr in [0.5]:
@@ -232,7 +232,7 @@ def main():
                                 starting_temperature=starting_temperature,
                                 starting_num_of_heads=starting_num_of_heads,
                                 optimizers=(optimizer, None),
-                                intermediate_masks=False,
+                                intermediate_masks=True,
                             )
 
                             # Training
