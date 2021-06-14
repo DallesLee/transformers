@@ -303,7 +303,7 @@ def main():
     # )
     # logger.info("Area under curve: %.2f", auc(sparsities, scores))
 
-    for k in [1]:
+    for k in [2]:
         score, sparisity, head_mask = gibbs_sampling(
             args, model, train_dataloader, eval_dataloader, val_dataloader=val_dataloader, early_stop_step=12, K=k, n_groups=1
         )

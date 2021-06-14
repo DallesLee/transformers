@@ -176,7 +176,7 @@ def main():
     annealing = True
     reducing_heads = False
     for temperature in [1e-8]:
-        for num_of_heads in [108]:
+        for num_of_heads in [8]:
             for cooldown_steps in [25000]:
                 for starting_temperature in [1000]:
                     for starting_num_of_heads in [144]:
@@ -225,20 +225,20 @@ def main():
                                 eval_dataset=eval_dataset,
                                 compute_metrics=build_compute_metrics_fn(data_args.task_name),
                                 num_of_heads=num_of_heads,
-                                # reducing_heads=reducing_heads,
-                                # temperature=temperature,
-                                # cooldown_steps=cooldown_steps,
-                                # annealing=annealing,
-                                # starting_temperature=starting_temperature,
-                                # starting_num_of_heads=starting_num_of_heads,
-                                # optimizers=(optimizer, None),
-                                # intermediate_masks=True,
-                                ste=True,
+                                reducing_heads=reducing_heads,
+                                temperature=temperature,
+                                cooldown_steps=cooldown_steps,
+                                annealing=annealing,
+                                starting_temperature=starting_temperature,
+                                starting_num_of_heads=starting_num_of_heads,
+                                optimizers=(optimizer, None),
+                                intermediate_masks=True,
+                                # ste=True,
                             )
 
                             # Training
                             trainer.train()
-                            # trainer.save_model()
+                            trainer.save_model()
                             # score = trainer.evaluate(eval_dataset=eval_dataset)[metric]
                             # print_2d_tensor(model.get_w())
                             # logger.info("temperature: {}, num of heads: {}, accuracy: {}".format(temperature, num_of_heads, score * 100))

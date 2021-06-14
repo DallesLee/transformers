@@ -354,7 +354,7 @@ class DropoutTrainer(Trainer):
 
                         self.log(logs)
 
-                    if self.args.evaluate_during_training and self.global_step % self.args.eval_steps == 0:
+                    if self.args.evaluate_during_training and self.global_step % self.args.eval_steps == 1:
                         metrics = self.evaluate()
                         self._report_to_hp_search(trial, epoch, metrics)
 
